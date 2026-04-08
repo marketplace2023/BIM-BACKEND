@@ -6,12 +6,18 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   Index,
+  Unique,
 } from 'typeorm';
 
 @Entity('bim_contratistas')
+@Unique('uq_bim_cont_tenant_rut', ['tenant_id', 'rut_nif'])
 export class BimContratista {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  @Index('idx_bim_cont_tenant')
+  tenant_id: string;
 
   @Column({ type: 'varchar', length: 220 })
   @Index()
@@ -20,7 +26,7 @@ export class BimContratista {
   @Column({ type: 'varchar', length: 220, nullable: true })
   nombre_legal: string | null;
 
-  @Column({ type: 'varchar', length: 60, nullable: true, unique: true })
+  @Column({ type: 'varchar', length: 60, nullable: true })
   rut_nif: string | null;
 
   @Column({ type: 'varchar', length: 30, default: 'empresa' })

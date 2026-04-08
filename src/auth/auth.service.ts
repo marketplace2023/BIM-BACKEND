@@ -47,7 +47,11 @@ export class AuthService implements OnModuleInit {
     });
     if (existing) throw new ConflictException('Email already registered');
 
-    const tenantId = await this.resolveTenantId(dto.tenant_id);
+    const tenantId = await this.resolveTenantIdForRegistration(
+      dto.tenant_id,
+      dto.username,
+      dto.name,
+    );
     const role = this.resolvePrimaryRole(dto.role);
     const entityType = this.resolveRegistrationEntityType(
       dto.role,
@@ -209,6 +213,46 @@ export class AuthService implements OnModuleInit {
     );
 
     return tenant.id;
+  }
+
+  private async resolveTenantIdForRegistration(
+    preferredTenantId: string | undefined,
+    username: string,
+    name: string,
+  ) {
+    if (preferredTenantId) {
+      return this.resolveTenantId(preferredTenantId);
+    }
+
+    const baseSlug = this.buildTenantSlug(username || name || 'tenant');
+    let slug = baseSlug;
+    let suffix = 1;
+
+    while (await this.tenantsRepo.findOne({ where: { slug } })) {
+      suffix += 1;
+      slug = `${baseSlug}-${suffix}`;
+    }
+
+    const tenant = await this.tenantsRepo.save(
+      this.tenantsRepo.create({
+        name: `${name} Workspace`,
+        slug,
+        status: 'active',
+      }),
+    );
+
+    return tenant.id;
+  }
+
+  private buildTenantSlug(input: string) {
+    const normalized = input
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 90);
+
+    return normalized || `tenant-${Date.now()}`;
   }
 
   private async ensureAdminUser() {

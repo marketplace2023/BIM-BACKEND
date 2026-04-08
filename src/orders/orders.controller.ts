@@ -81,6 +81,17 @@ export class OrdersController {
     return this.svc.findStoreOrders(user, storeContextId, verticalType, page, limit);
   }
 
+  /** GET /api/orders/store/:id */
+  @Get('store/:id')
+  findStoreOrderOne(
+    @Param('id') id: string,
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
+    @Headers('x-store-context') storeContextId?: string,
+  ) {
+    return this.svc.findStoreOrderOne(id, user, storeContextId);
+  }
+
   /** GET /api/orders/education/enrollments?page=1&limit=20 */
   @Get('education/enrollments')
   findEducationEnrollments(
@@ -110,6 +121,17 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
   ) {
     return this.svc.updateStatus(id, user.partner_id, dto);
+  }
+
+  /** PATCH /api/orders/store/:id/status */
+  @Patch('store/:id/status')
+  updateStoreStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @Headers('x-store-context') storeContextId: string | undefined,
+    @Body() dto: UpdateOrderStatusDto,
+  ) {
+    return this.svc.updateStoreOrderStatus(id, user, storeContextId, dto);
   }
 
   /** PATCH /api/orders/:id/payment-method */

@@ -19,6 +19,10 @@ export class BimCertificacion {
   id: string;
 
   @Column({ type: 'bigint', unsigned: true })
+  @Index('idx_cert_tenant')
+  tenant_id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
   obra_id: string;
 
   @ManyToOne(() => BimObra, { onDelete: 'RESTRICT' })

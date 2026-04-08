@@ -16,9 +16,13 @@ export class ObrasService {
     private readonly obrasRepo: Repository<BimObra>,
   ) {}
 
-  async create(dto: CreateObraDto, userId: string): Promise<BimObra> {
+  async create(
+    dto: CreateObraDto,
+    userId: string,
+    tenantId: string,
+  ): Promise<BimObra> {
     const exists = await this.obrasRepo.findOne({
-      where: { codigo: dto.codigo },
+      where: { codigo: dto.codigo, tenant_id: tenantId },
     });
     if (exists) {
       throw new ConflictException(
@@ -28,13 +32,14 @@ export class ObrasService {
 
     const obra = this.obrasRepo.create({
       ...dto,
+      tenant_id: tenantId,
       created_by: userId,
     });
     return this.obrasRepo.save(obra);
   }
 
-  async findAll(estado?: string): Promise<BimObra[]> {
-    const where: any = { deleted_at: IsNull() };
+  async findAll(tenantId: string, estado?: string): Promise<BimObra[]> {
+    const where: any = { deleted_at: IsNull(), tenant_id: tenantId };
     if (estado) where.estado = estado;
 
     return this.obrasRepo.find({
@@ -44,21 +49,21 @@ export class ObrasService {
     });
   }
 
-  async findOne(id: string): Promise<BimObra> {
+  async findOne(id: string, tenantId: string): Promise<BimObra> {
     const obra = await this.obrasRepo.findOne({
-      where: { id, deleted_at: IsNull() },
+      where: { id, tenant_id: tenantId, deleted_at: IsNull() },
       relations: ['responsable', 'creator'],
     });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }
 
-  async update(id: string, dto: UpdateObraDto): Promise<BimObra> {
-    const obra = await this.findOne(id);
+  async update(id: string, tenantId: string, dto: UpdateObraDto): Promise<BimObra> {
+    const obra = await this.findOne(id, tenantId);
 
     if (dto.codigo && dto.codigo !== obra.codigo) {
       const duplicate = await this.obrasRepo.findOne({
-        where: { codigo: dto.codigo },
+        where: { codigo: dto.codigo, tenant_id: tenantId },
       });
       if (duplicate) {
         throw new ConflictException(
@@ -71,8 +76,8 @@ export class ObrasService {
     return this.obrasRepo.save(obra);
   }
 
-  async remove(id: string): Promise<void> {
-    const obra = await this.findOne(id);
+  async remove(id: string, tenantId: string): Promise<void> {
+    const obra = await this.findOne(id, tenantId);
     await this.obrasRepo.softRemove(obra);
   }
 }

@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { FUR_STATUSES } from '../../common/constants/marketplace.constants';
 
 export class CreateStoreDto {
   // ── Base partner ────────────────────────────────────────
@@ -84,6 +85,10 @@ export class CreateStoreDto {
   @IsObject()
   @IsOptional()
   attributes_json?: Record<string, any>;
+
+  @IsIn(FUR_STATUSES)
+  @IsOptional()
+  x_verification_status?: string;
 
   // ── Contractor Profile ──────────────────────────────────
   @IsString()

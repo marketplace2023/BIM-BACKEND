@@ -7,6 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { BimCertificacion } from '../database/entities/bim/bim-certificacion.entity';
 import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certificacion.entity';
+import { BimObra } from '../database/entities/bim/bim-obra.entity';
+import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import {
   CreateCertificacionDto,
   CreateLineaCertificacionDto,
@@ -20,13 +22,20 @@ export class CertificacionesService {
     private readonly certRepo: Repository<BimCertificacion>,
     @InjectRepository(BimLineaCertificacion)
     private readonly lineaRepo: Repository<BimLineaCertificacion>,
+    @InjectRepository(BimObra)
+    private readonly obraRepo: Repository<BimObra>,
+    @InjectRepository(BimPresupuesto)
+    private readonly presupuestoRepo: Repository<BimPresupuesto>,
     private readonly dataSource: DataSource,
   ) {}
 
   async create(
     dto: CreateCertificacionDto,
     userId: string,
+    tenantId: string,
   ): Promise<BimCertificacion> {
+    await this.findTenantObra(dto.obra_id, tenantId);
+    await this.findTenantPresupuesto(dto.presupuesto_id, tenantId);
     return this.dataSource.transaction(async (manager) => {
       // Obtener el siguiente número correlativo por obra
       const lastCert = await manager.findOne(BimCertificacion, {
@@ -35,7 +44,8 @@ export class CertificacionesService {
       });
       const numero = (lastCert?.numero ?? 0) + 1;
 
-      const cert = manager.create(BimCertificacion, {
+        const cert = manager.create(BimCertificacion, {
+        tenant_id: tenantId,
         obra_id: dto.obra_id,
         presupuesto_id: dto.presupuesto_id,
         numero,
@@ -122,16 +132,17 @@ export class CertificacionesService {
     });
   }
 
-  async findByObra(obraId: string): Promise<BimCertificacion[]> {
+  async findByObra(obraId: string, tenantId: string): Promise<BimCertificacion[]> {
+    await this.findTenantObra(obraId, tenantId);
     return this.certRepo.find({
-      where: { obra_id: obraId },
+      where: { obra_id: obraId, tenant_id: tenantId },
       order: { numero: 'ASC' },
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, tenantId: string) {
     const cert = await this.certRepo.findOne({
-      where: { id },
+      where: { id, tenant_id: tenantId },
       relations: ['obra', 'presupuesto', 'creator', 'aprobador'],
     });
     if (!cert)
@@ -150,8 +161,9 @@ export class CertificacionesService {
     id: string,
     dto: AprobarCertificacionDto,
     userId: string,
+    tenantId: string,
   ): Promise<BimCertificacion> {
-    const cert = await this.certRepo.findOneBy({ id });
+    const cert = await this.certRepo.findOneBy({ id, tenant_id: tenantId });
     if (!cert)
       throw new NotFoundException(`Certificación #${id} no encontrada`);
 
@@ -177,8 +189,8 @@ export class CertificacionesService {
     return this.certRepo.save(cert);
   }
 
-  async remove(id: string): Promise<void> {
-    const cert = await this.certRepo.findOneBy({ id });
+  async remove(id: string, tenantId: string): Promise<void> {
+    const cert = await this.certRepo.findOneBy({ id, tenant_id: tenantId });
     if (!cert)
       throw new NotFoundException(`Certificación #${id} no encontrada`);
     if (cert.estado !== 'borrador') {
@@ -187,5 +199,20 @@ export class CertificacionesService {
       );
     }
     await this.certRepo.remove(cert);
+  }
+
+  private async findTenantObra(id: string, tenantId: string) {
+    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
+    return obra;
+  }
+
+  private async findTenantPresupuesto(id: string, tenantId: string) {
+    const presupuesto = await this.presupuestoRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
+    if (!presupuesto)
+      throw new NotFoundException(`Presupuesto #${id} no encontrado`);
+    return presupuesto;
   }
 }

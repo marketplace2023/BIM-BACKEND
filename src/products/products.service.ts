@@ -387,6 +387,15 @@ export class ProductsService {
     return { ...tmpl, extension, images, variants, stock_quants: stockQuants };
   }
 
+  async findPublicOne(id: string) {
+    const tmpl = await this.tmplRepo.findOne({
+      where: { id, deleted_at: IsNull(), is_published: 1 },
+    });
+    if (!tmpl) throw new NotFoundException('Published product not found');
+
+    return this.findOne(id);
+  }
+
   async update(
     id: string,
     user: { tenant_id: string; partner_id: string; email?: string },

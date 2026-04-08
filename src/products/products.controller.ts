@@ -163,6 +163,12 @@ export class ProductsController {
     return this.svc.getInventory(user, storeContextId);
   }
 
+  /** GET /api/products/public/:id */
+  @Get('public/:id')
+  findPublicOne(@Param('id') id: string) {
+    return this.svc.findPublicOne(id);
+  }
+
   /** GET /api/products/:id */
   @Get(':id')
   findOne(@Param('id') id: string) {

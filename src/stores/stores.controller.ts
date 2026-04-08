@@ -226,8 +226,32 @@ export class StoresController {
   /** PATCH /api/stores/:id */
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateStoreDto) {
-    return this.svc.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @Body() dto: UpdateStoreDto,
+  ) {
+    return this.svc.update(id, user, dto);
+  }
+
+  /** PATCH /api/stores/:id/publish */
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/publish')
+  publish(
+    @Param('id') id: string,
+    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+  ) {
+    return this.svc.setPublished(id, user, true);
+  }
+
+  /** PATCH /api/stores/:id/unpublish */
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/unpublish')
+  unpublish(
+    @Param('id') id: string,
+    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+  ) {
+    return this.svc.setPublished(id, user, false);
   }
 
   /** GET /api/stores/:id/products */

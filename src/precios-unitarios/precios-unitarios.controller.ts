@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Request,
 } from '@nestjs/common';
 import { PreciosUnitariosService } from './precios-unitarios.service';
 import {
@@ -31,51 +32,51 @@ export class PreciosUnitariosController {
 
   // ── Recursos ─────────────────────────────────────────
   @Post('recursos')
-  createRecurso(@Body() dto: CreateRecursoDto) {
-    return this.service.createRecurso(dto);
+  createRecurso(@Body() dto: CreateRecursoDto, @Request() req: any) {
+    return this.service.createRecurso(dto, req.user.tenant_id);
   }
 
   @Get('recursos')
-  findRecursos(@Query('tipo') tipo?: string) {
-    return this.service.findRecursos(tipo);
+  findRecursos(@Query('tipo') tipo?: string, @Request() req?: any) {
+    return this.service.findRecursos(req.user.tenant_id, tipo);
   }
 
   @Patch('recursos/:id')
-  updateRecurso(@Param('id') id: string, @Body() dto: UpdateRecursoDto) {
-    return this.service.updateRecurso(id, dto);
+  updateRecurso(@Param('id') id: string, @Body() dto: UpdateRecursoDto, @Request() req: any) {
+    return this.service.updateRecurso(id, req.user.tenant_id, dto);
   }
 
   @Delete('recursos/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeRecurso(@Param('id') id: string) {
-    return this.service.removeRecurso(id);
+  removeRecurso(@Param('id') id: string, @Request() req: any) {
+    return this.service.removeRecurso(id, req.user.tenant_id);
   }
 
   // ── APU (Precios Unitarios) ───────────────────────────
   @Post()
-  createPU(@Body() dto: CreatePrecioUnitarioDto) {
-    return this.service.createPU(dto);
+  createPU(@Body() dto: CreatePrecioUnitarioDto, @Request() req: any) {
+    return this.service.createPU(dto, req.user.tenant_id);
   }
 
   @Get()
-  findPUs(@Query('categoria') categoria?: string) {
-    return this.service.findPUs(categoria);
+  findPUs(@Query('categoria') categoria?: string, @Request() req?: any) {
+    return this.service.findPUs(req.user.tenant_id, categoria);
   }
 
   @Get(':id')
-  findOnePU(@Param('id') id: string) {
-    return this.service.findOnePU(id);
+  findOnePU(@Param('id') id: string, @Request() req: any) {
+    return this.service.findOnePU(id, req.user.tenant_id);
   }
 
   @Patch(':id')
-  updatePU(@Param('id') id: string, @Body() dto: UpdatePrecioUnitarioDto) {
-    return this.service.updatePU(id, dto);
+  updatePU(@Param('id') id: string, @Body() dto: UpdatePrecioUnitarioDto, @Request() req: any) {
+    return this.service.updatePU(id, req.user.tenant_id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removePU(@Param('id') id: string) {
-    return this.service.removePU(id);
+  removePU(@Param('id') id: string, @Request() req: any) {
+    return this.service.removePU(id, req.user.tenant_id);
   }
 
   // ── Descomposición del APU ────────────────────────────
@@ -83,21 +84,23 @@ export class PreciosUnitariosController {
   addDescomposicion(
     @Param('id') id: string,
     @Body() dto: CreateDescomposicionDto,
+    @Request() req: any,
   ) {
-    return this.service.addDescomposicion(id, dto);
+    return this.service.addDescomposicion(id, req.user.tenant_id, dto);
   }
 
   @Patch('descomposicion/:id')
   updateDescomposicion(
     @Param('id') id: string,
     @Body() dto: UpdateDescomposicionDto,
+    @Request() req: any,
   ) {
-    return this.service.updateDescomposicion(id, dto);
+    return this.service.updateDescomposicion(id, req.user.tenant_id, dto);
   }
 
   @Delete('descomposicion/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeDescomposicion(@Param('id') id: string) {
-    return this.service.removeDescomposicion(id);
+  removeDescomposicion(@Param('id') id: string, @Request() req: any) {
+    return this.service.removeDescomposicion(id, req.user.tenant_id);
   }
 }

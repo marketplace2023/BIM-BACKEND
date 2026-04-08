@@ -10,6 +10,8 @@ import { UsersModule } from './users/users.module';
 import { StoresModule } from './stores/stores.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
+import { OrdersModule } from './orders/orders.module';
+import { IntentsModule } from './intents/intents.module';
 
 // ── BIM (módulos nuevos) ─────────────────────────────────────
 import { ObrasModule } from './obras/obras.module';
@@ -43,6 +45,8 @@ import { CertificacionesModule } from './certificaciones/certificaciones.module'
     StoresModule,
     CategoriesModule,
     ProductsModule,
+    OrdersModule,
+    IntentsModule,
 
     // BIM
     ObrasModule,

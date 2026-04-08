@@ -8,15 +8,21 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  Unique,
 } from 'typeorm';
 import { ResUser } from '../identity/res-user.entity';
 
 @Entity('bim_obras')
+@Unique('uq_bim_obras_tenant_codigo', ['tenant_id', 'codigo'])
 export class BimObra {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
-  @Column({ type: 'varchar', length: 60, unique: true })
+  @Column({ type: 'bigint', unsigned: true })
+  @Index('idx_bim_obras_tenant')
+  tenant_id: string;
+
+  @Column({ type: 'varchar', length: 60 })
   codigo: string;
 
   @Column({ type: 'varchar', length: 220 })

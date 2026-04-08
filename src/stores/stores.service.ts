@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
@@ -38,7 +38,45 @@ export class StoresService {
     }));
   }
 
+  private async resolveManagedStore(
+    storeId: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+  ) {
+    const store = await this.partnersRepo.findOne({
+      where: { id: storeId, tenant_id: user.tenant_id, deleted_at: IsNull() },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+
+    if (store.id === user.partner_id) {
+      return store;
+    }
+
+    const basePartner = await this.partnersRepo.findOne({
+      where: { id: user.partner_id, tenant_id: user.tenant_id, deleted_at: IsNull() },
+    });
+
+    const effectiveEmail =
+      user.email?.trim().toLowerCase() ??
+      basePartner?.email?.trim().toLowerCase() ??
+      null;
+
+    const sameEmail =
+      Boolean(effectiveEmail) &&
+      Boolean(store.email) &&
+      store.email!.trim().toLowerCase() === effectiveEmail;
+
+    if (!sameEmail) {
+      throw new ForbiddenException('Not allowed for this managed store');
+    }
+
+    return store;
+  }
+
   async create(tenantId: string, dto: CreateStoreDto) {
+    const furStatus = dto.x_verification_status ?? 'draft';
     const partner = await this.partnersRepo.save(
       this.partnersRepo.create({
         tenant_id: tenantId,
@@ -60,8 +98,15 @@ export class StoresService {
         partner_longitude:
           dto.partner_longitude != null ? String(dto.partner_longitude) : null,
         nap_json: dto.nap_json ?? null,
-        attributes_json: dto.attributes_json ?? null,
-        x_verification_status: 'draft',
+        attributes_json: {
+          ...(dto.attributes_json ?? {}),
+          fur_t: {
+            ...(((dto.attributes_json ?? {}) as Record<string, any>).fur_t ?? {}),
+            status: furStatus,
+            updated_at: new Date().toISOString(),
+          },
+        },
+        x_verification_status: furStatus,
       }),
     );
     await this._createProfile(partner.id, dto);
@@ -254,11 +299,12 @@ export class StoresService {
     return enriched;
   }
 
-  async update(id: string, dto: UpdateStoreDto) {
-    const partner = await this.partnersRepo.findOne({
-      where: { id, deleted_at: IsNull() },
-    });
-    if (!partner) throw new NotFoundException('Store not found');
+  async update(
+    id: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+    dto: UpdateStoreDto,
+  ) {
+    const partner = await this.resolveManagedStore(id, user);
 
     const base: Record<string, any> = {};
     const baseKeys = [
@@ -293,10 +339,47 @@ export class StoresService {
         ...(dto.attributes_json ?? {}),
       };
     }
+    if (dto.x_verification_status !== undefined) {
+      base.x_verification_status = dto.x_verification_status;
+      base.attributes_json = {
+        ...(base.attributes_json ?? partner.attributes_json ?? {}),
+        fur_t: {
+          ...(((base.attributes_json ?? partner.attributes_json ?? {}) as Record<string, any>)
+            .fur_t ?? {}),
+          status: dto.x_verification_status,
+          updated_at: new Date().toISOString(),
+        },
+      };
+    }
     if (Object.keys(base).length) await this.partnersRepo.update(id, base);
 
     await this.ensureProfileExists(id, partner.entity_type);
     await this._updateProfile(id, partner.entity_type, dto);
+    return this.findOne(id);
+  }
+
+  async setPublished(
+    id: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+    published: boolean,
+  ) {
+    const partner = await this.resolveManagedStore(id, user);
+    const attributes = (partner.attributes_json ?? {}) as Record<string, any>;
+    const fur = (attributes.fur_t ?? {}) as Record<string, any>;
+    const nextAttributes: Record<string, any> = {
+      ...attributes,
+      fur_t: {
+        ...fur,
+        status: published ? 'published' : 'draft',
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    await this.partnersRepo.update(id, {
+      x_verification_status: published ? 'published' : 'draft',
+      attributes_json: nextAttributes as any,
+    });
+
     return this.findOne(id);
   }
 

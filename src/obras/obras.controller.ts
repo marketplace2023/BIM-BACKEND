@@ -24,27 +24,27 @@ export class ObrasController {
 
   @Post()
   create(@Body() dto: CreateObraDto, @Request() req: any) {
-    return this.obrasService.create(dto, req.user.id);
+    return this.obrasService.create(dto, req.user.id, req.user.tenant_id);
   }
 
   @Get()
-  findAll(@Query('estado') estado?: string) {
-    return this.obrasService.findAll(estado);
+  findAll(@Query('estado') estado?: string, @Request() req?: any) {
+    return this.obrasService.findAll(req.user.tenant_id, estado);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.obrasService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.obrasService.findOne(id, req.user.tenant_id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateObraDto) {
-    return this.obrasService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateObraDto, @Request() req: any) {
+    return this.obrasService.update(id, req.user.tenant_id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.obrasService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.obrasService.remove(id, req.user.tenant_id);
   }
 }

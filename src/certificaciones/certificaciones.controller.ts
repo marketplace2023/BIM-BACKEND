@@ -25,17 +25,17 @@ export class CertificacionesController {
 
   @Post()
   create(@Body() dto: CreateCertificacionDto, @Request() req: any) {
-    return this.service.create(dto, req.user.id);
+    return this.service.create(dto, req.user.id, req.user.tenant_id);
   }
 
   @Get('obra/:obraId')
-  findByObra(@Param('obraId') obraId: string) {
-    return this.service.findByObra(obraId);
+  findByObra(@Param('obraId') obraId: string, @Request() req: any) {
+    return this.service.findByObra(obraId, req.user.tenant_id);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.service.findOne(id, req.user.tenant_id);
   }
 
   @Patch(':id/estado')
@@ -44,12 +44,12 @@ export class CertificacionesController {
     @Body() dto: AprobarCertificacionDto,
     @Request() req: any,
   ) {
-    return this.service.cambiarEstado(id, dto, req.user.id);
+    return this.service.cambiarEstado(id, dto, req.user.id, req.user.tenant_id);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.service.remove(id, req.user.tenant_id);
   }
 }

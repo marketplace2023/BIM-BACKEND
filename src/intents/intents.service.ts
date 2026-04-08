@@ -16,6 +16,7 @@ import { ResPartner } from '../database/entities/identity/res-partner.entity';
 import { StockQuant } from '../database/entities/inventory/stock-quant.entity';
 import { StorePaymentMethod } from '../database/entities/payments/store-payment-method.entity';
 import { AddIntentItemDto } from './dto/add-intent-item.dto';
+import { CreatePublicProductIntentDto } from './dto/create-public-product-intent.dto';
 import { SelectIntentPaymentMethodDto } from './dto/select-intent-payment-method.dto';
 import { SubmitIntentPaymentProofDto } from './dto/submit-intent-payment-proof.dto';
 import { UpdateIntentItemDto } from './dto/update-intent-item.dto';
@@ -209,6 +210,153 @@ export class IntentsService {
           converted_order_id: null,
         }),
     );
+  }
+
+  private async findOrCreatePublicBuyerPartner(input: {
+    tenantId: string;
+    buyerName: string;
+    buyerEmail: string;
+    buyerPhone?: string;
+    company?: string;
+    city?: string;
+    country?: string;
+  }) {
+    const normalizedEmail = input.buyerEmail.trim().toLowerCase();
+
+    const existing = await this.partnersRepo.findOne({
+      where: {
+        tenant_id: input.tenantId,
+        entity_type: 'customer',
+        email: normalizedEmail,
+        deleted_at: IsNull(),
+      },
+    });
+
+    if (existing) {
+      Object.assign(existing, {
+        name: input.buyerName,
+        phone: input.buyerPhone ?? existing.phone,
+        city: input.city ?? existing.city,
+        country: input.country ?? existing.country,
+        legal_name: input.company ?? existing.legal_name,
+      });
+      return this.partnersRepo.save(existing);
+    }
+
+    return this.partnersRepo.save(
+      this.partnersRepo.create({
+        tenant_id: input.tenantId,
+        entity_type: 'customer',
+        name: input.buyerName,
+        legal_name: input.company ?? null,
+        is_company: input.company ? 1 : 0,
+        email: normalizedEmail,
+        phone: input.buyerPhone ?? null,
+        city: input.city ?? null,
+        country: input.country ?? null,
+        x_partner_role: 'consumer',
+        x_verification_status: 'published',
+        attributes_json: {
+          source: 'public_product_lead',
+        },
+      }),
+    );
+  }
+
+  async createPublicProductLead(dto: CreatePublicProductIntentDto) {
+    const product = await this.productsRepo.findOne({
+      where: {
+        id: dto.product_tmpl_id,
+        deleted_at: IsNull(),
+        is_published: 1,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Published product not found');
+    }
+
+    const storePartner = await this.partnersRepo.findOne({
+      where: {
+        id: product.partner_id,
+        tenant_id: product.tenant_id,
+        deleted_at: IsNull(),
+      },
+    });
+
+    if (!storePartner || storePartner.x_verification_status !== 'published') {
+      throw new NotFoundException('Published store not found');
+    }
+
+    const buyerPartner = await this.findOrCreatePublicBuyerPartner({
+      tenantId: product.tenant_id,
+      buyerName: dto.buyer_name.trim(),
+      buyerEmail: dto.buyer_email.trim(),
+      buyerPhone: dto.buyer_phone?.trim(),
+      company: dto.company?.trim(),
+      city: dto.city?.trim(),
+      country: dto.country?.trim(),
+    });
+
+    const intentType = DEFAULT_INTENT_BY_VERTICAL[product.vertical_type] ?? 'quote_request';
+    const qty = Number(dto.qty ?? 1);
+
+    if (product.vertical_type === 'hardware_store') {
+      await this.validateHardwareStock(product, qty);
+    }
+
+    const intent = await this.intentsRepo.save(
+      this.intentsRepo.create({
+        tenant_id: product.tenant_id,
+        buyer_partner_id: buyerPartner.id,
+        store_partner_id: product.partner_id,
+        vertical_type: product.vertical_type,
+        intent_type: intentType,
+        status: 'submitted',
+        currency_code: product.currency_code ?? 'USD',
+        payment_status: 'unpaid',
+        payment_method_id: null,
+        payment_reference: null,
+        payment_proof_url: null,
+        payment_notes: null,
+        paid_at: null,
+        validated_by_store_user_id: null,
+        validated_at: null,
+        summary_json: {
+          source: 'public_product_lead',
+          buyer_name: dto.buyer_name,
+          buyer_email: dto.buyer_email,
+          buyer_phone: dto.buyer_phone ?? null,
+          company: dto.company ?? null,
+          city: dto.city ?? null,
+          country: dto.country ?? null,
+          message: dto.message ?? null,
+        },
+        converted_order_id: null,
+      }),
+    );
+
+    await this.itemsRepo.save(
+      this.itemsRepo.create({
+        intent_id: intent.id,
+        product_tmpl_id: product.id,
+        product_variant_id: null,
+        item_type: DEFAULT_ITEM_TYPE_BY_VERTICAL[product.vertical_type] ?? product.vertical_type,
+        name_snapshot: product.name,
+        price_snapshot: product.list_price,
+        qty: String(qty),
+        payload_json: {
+          source: 'public_product_lead',
+          message: dto.message ?? null,
+        },
+      }),
+    );
+
+    return {
+      id: intent.id,
+      status: intent.status,
+      message: 'Lead created successfully',
+    };
   }
 
   async addItem(

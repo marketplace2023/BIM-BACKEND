@@ -5,14 +5,20 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Unique,
 } from 'typeorm';
 
 @Entity('bim_recursos')
+@Unique('uq_brec_tenant_codigo', ['tenant_id', 'codigo'])
 export class BimRecurso {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
-  @Column({ type: 'varchar', length: 60, unique: true })
+  @Column({ type: 'bigint', unsigned: true })
+  @Index('idx_brec_tenant')
+  tenant_id: string;
+
+  @Column({ type: 'varchar', length: 60 })
   codigo: string;
 
   @Column({ type: 'varchar', length: 300 })

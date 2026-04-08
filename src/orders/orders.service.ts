@@ -189,6 +189,15 @@ export class OrdersService {
     return { data: hydrated, total, page, limit };
   }
 
+  async findStoreOrderOne(
+    id: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+    requestedPartnerId?: string,
+  ) {
+    const order = await this.ensureStoreOrderAccess(id, user, requestedPartnerId);
+    return this._loadWithLines(order.id);
+  }
+
   async findEducationEnrollments(
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId?: string,
@@ -316,6 +325,17 @@ export class OrdersService {
     return this._loadWithLines(id);
   }
 
+  async updateStoreOrderStatus(
+    id: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+    requestedPartnerId: string | undefined,
+    dto: UpdateOrderStatusDto,
+  ) {
+    const order = await this.ensureStoreOrderAccess(id, user, requestedPartnerId);
+    await this.ordersRepo.update(order.id, { status: dto.status });
+    return this._loadWithLines(order.id);
+  }
+
   async selectPaymentMethod(
     id: string,
     user: { tenant_id: string; partner_id: string },
@@ -387,5 +407,29 @@ export class OrdersService {
     });
     const lines = await this.linesRepo.find({ where: { order_id: orderId } });
     return { ...order, lines };
+  }
+
+  private async ensureStoreOrderAccess(
+    id: string,
+    user: { tenant_id: string; partner_id: string; email?: string },
+    requestedPartnerId?: string,
+  ) {
+    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+
+    const order = await this.ordersRepo
+      .createQueryBuilder('o')
+      .innerJoin(SaleOrderLine, 'line', 'line.order_id = o.id')
+      .innerJoin(ProductTemplate, 'product', 'product.id = line.product_tmpl_id')
+      .where('o.id = :id', { id })
+      .andWhere('o.tenant_id = :tenantId', { tenantId: user.tenant_id })
+      .andWhere('product.partner_id = :partnerId', { partnerId: managedPartnerId })
+      .andWhere('product.deleted_at IS NULL')
+      .getOne();
+
+    if (!order) {
+      throw new NotFoundException('Store order not found');
+    }
+
+    return order;
   }
 }

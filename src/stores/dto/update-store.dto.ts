@@ -1,12 +1,14 @@
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
+import { FUR_STATUSES } from '../../common/constants/marketplace.constants';
 
 export class UpdateStoreDto {
   @IsString() @MaxLength(180) @IsOptional() name?: string;
@@ -25,6 +27,7 @@ export class UpdateStoreDto {
   @IsNumber() @IsOptional() partner_longitude?: number;
   @IsObject() @IsOptional() nap_json?: Record<string, any>;
   @IsObject() @IsOptional() attributes_json?: Record<string, any>;
+  @IsIn(FUR_STATUSES) @IsOptional() x_verification_status?: string;
 
   // contractor
   @IsString() @IsOptional() service_area_type?: string;

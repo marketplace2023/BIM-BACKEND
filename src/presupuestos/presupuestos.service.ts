@@ -8,6 +8,7 @@ import { Repository, DataSource } from 'typeorm';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
+import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import {
   CreatePresupuestoDto,
   CreateCapituloDto,
@@ -28,6 +29,8 @@ export class PresupuestosService {
     private readonly capituloRepo: Repository<BimCapitulo>,
     @InjectRepository(BimPartida)
     private readonly partidaRepo: Repository<BimPartida>,
+    @InjectRepository(BimObra)
+    private readonly obraRepo: Repository<BimObra>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -35,9 +38,12 @@ export class PresupuestosService {
   async create(
     dto: CreatePresupuestoDto,
     userId: string,
+    tenantId: string,
   ): Promise<BimPresupuesto> {
+    await this.findTenantObra(dto.obra_id, tenantId);
     return this.dataSource.transaction(async (manager) => {
       const presupuesto = manager.create(BimPresupuesto, {
+        tenant_id: tenantId,
         obra_id: dto.obra_id,
         tipo: dto.tipo ?? 'obra',
         nombre: dto.nombre,
@@ -91,24 +97,25 @@ export class PresupuestosService {
     }
   }
 
-  async findByObra(obraId: string): Promise<BimPresupuesto[]> {
+  async findByObra(obraId: string, tenantId: string): Promise<BimPresupuesto[]> {
+    await this.findTenantObra(obraId, tenantId);
     return this.presupuestoRepo.find({
-      where: { obra_id: obraId },
+      where: { obra_id: obraId, tenant_id: tenantId },
       order: { version: 'DESC', created_at: 'DESC' },
     });
   }
 
-  async findOne(id: string): Promise<BimPresupuesto> {
+  async findOne(id: string, tenantId: string): Promise<BimPresupuesto> {
     const p = await this.presupuestoRepo.findOne({
-      where: { id },
+      where: { id, tenant_id: tenantId },
       relations: ['obra', 'creator', 'aprobador'],
     });
     if (!p) throw new NotFoundException(`Presupuesto #${id} no encontrado`);
     return p;
   }
 
-  async findWithTree(id: string) {
-    const presupuesto = await this.findOne(id);
+  async findWithTree(id: string, tenantId: string) {
+    const presupuesto = await this.findOne(id, tenantId);
 
     const capitulos = await this.capituloRepo.find({
       where: { presupuesto_id: id },
@@ -133,8 +140,12 @@ export class PresupuestosService {
     };
   }
 
-  async update(id: string, dto: UpdatePresupuestoDto): Promise<BimPresupuesto> {
-    const p = await this.findOne(id);
+  async update(
+    id: string,
+    tenantId: string,
+    dto: UpdatePresupuestoDto,
+  ): Promise<BimPresupuesto> {
+    const p = await this.findOne(id, tenantId);
     if (p.estado === 'cerrado') {
       throw new BadRequestException(
         'No se puede editar un presupuesto cerrado',
@@ -144,8 +155,12 @@ export class PresupuestosService {
     return this.presupuestoRepo.save(p);
   }
 
-  async aprobar(id: string, userId: string): Promise<BimPresupuesto> {
-    const p = await this.findOne(id);
+  async aprobar(
+    id: string,
+    userId: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto> {
+    const p = await this.findOne(id, tenantId);
     if (p.estado !== 'borrador' && p.estado !== 'revisado') {
       throw new BadRequestException(
         'Solo se pueden aprobar presupuestos en borrador o revisado',
@@ -157,8 +172,8 @@ export class PresupuestosService {
     return this.presupuestoRepo.save(p);
   }
 
-  async remove(id: string): Promise<void> {
-    const p = await this.findOne(id);
+  async remove(id: string, tenantId: string): Promise<void> {
+    const p = await this.findOne(id, tenantId);
     if (p.estado === 'aprobado') {
       throw new BadRequestException(
         'No se puede eliminar un presupuesto aprobado',
@@ -170,9 +185,10 @@ export class PresupuestosService {
   // ── Capítulos ───────────────────────────────────────────
   async createCapitulo(
     presupuestoId: string,
+    tenantId: string,
     dto: CreateCapituloDto,
   ): Promise<BimCapitulo> {
-    await this.findOne(presupuestoId);
+    await this.findOne(presupuestoId, tenantId);
     const cap = this.capituloRepo.create({
       presupuesto_id: presupuestoId,
       ...dto,
@@ -182,16 +198,17 @@ export class PresupuestosService {
 
   async updateCapitulo(
     id: string,
+    tenantId: string,
     dto: UpdateCapituloDto,
   ): Promise<BimCapitulo> {
-    const cap = await this.capituloRepo.findOneBy({ id });
+    const cap = await this.findCapitulo(id, tenantId);
     if (!cap) throw new NotFoundException(`Capítulo #${id} no encontrado`);
     Object.assign(cap, dto);
     return this.capituloRepo.save(cap);
   }
 
-  async removeCapitulo(id: string): Promise<void> {
-    const cap = await this.capituloRepo.findOneBy({ id });
+  async removeCapitulo(id: string, tenantId: string): Promise<void> {
+    const cap = await this.findCapitulo(id, tenantId);
     if (!cap) throw new NotFoundException(`Capítulo #${id} no encontrado`);
     await this.capituloRepo.remove(cap);
   }
@@ -199,9 +216,10 @@ export class PresupuestosService {
   // ── Partidas ────────────────────────────────────────────
   async createPartida(
     capituloId: string,
+    tenantId: string,
     dto: CreatePartidaDto,
   ): Promise<BimPartida> {
-    const cap = await this.capituloRepo.findOneBy({ id: capituloId });
+    const cap = await this.findCapitulo(capituloId, tenantId);
     if (!cap)
       throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
     const partida = this.partidaRepo.create({
@@ -211,21 +229,28 @@ export class PresupuestosService {
     return this.partidaRepo.save(partida);
   }
 
-  async updatePartida(id: string, dto: UpdatePartidaDto): Promise<BimPartida> {
-    const partida = await this.partidaRepo.findOneBy({ id });
+  async updatePartida(
+    id: string,
+    tenantId: string,
+    dto: UpdatePartidaDto,
+  ): Promise<BimPartida> {
+    const partida = await this.findPartida(id, tenantId);
     if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
     Object.assign(partida, dto);
     return this.partidaRepo.save(partida);
   }
 
-  async removePartida(id: string): Promise<void> {
-    const partida = await this.partidaRepo.findOneBy({ id });
+  async removePartida(id: string, tenantId: string): Promise<void> {
+    const partida = await this.findPartida(id, tenantId);
     if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
     await this.partidaRepo.remove(partida);
   }
 
   // ── Recalcular total del presupuesto ────────────────────
-  async recalcularTotal(presupuestoId: string): Promise<BimPresupuesto> {
+  async recalcularTotal(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto> {
     const result = await this.partidaRepo
       .createQueryBuilder('p')
       .innerJoin('bim_capitulos', 'c', 'c.id = p.capitulo_id')
@@ -234,7 +259,7 @@ export class PresupuestosService {
       .getRawOne<{ total: string }>();
 
     const totalPartidas = parseFloat(result?.total ?? '0');
-    const presupuesto = await this.findOne(presupuestoId);
+    const presupuesto = await this.findOne(presupuestoId, tenantId);
     const gi = parseFloat(presupuesto.gastos_indirectos_pct) / 100;
     const ben = parseFloat(presupuesto.beneficio_pct) / 100;
     const iva = parseFloat(presupuesto.iva_pct) / 100;
@@ -244,5 +269,36 @@ export class PresupuestosService {
 
     presupuesto.total_presupuesto = total.toFixed(2);
     return this.presupuestoRepo.save(presupuesto);
+  }
+
+  private async findTenantObra(id: string, tenantId: string) {
+    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
+    return obra;
+  }
+
+  private async findCapitulo(id: string, tenantId: string) {
+    const capitulo = await this.capituloRepo
+      .createQueryBuilder('cap')
+      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = cap.presupuesto_id')
+      .where('cap.id = :id', { id })
+      .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .getOne();
+
+    if (!capitulo) throw new NotFoundException(`Capítulo #${id} no encontrado`);
+    return capitulo;
+  }
+
+  private async findPartida(id: string, tenantId: string) {
+    const partida = await this.partidaRepo
+      .createQueryBuilder('partida')
+      .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
+      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .where('partida.id = :id', { id })
+      .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .getOne();
+
+    if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
+    return partida;
   }
 }

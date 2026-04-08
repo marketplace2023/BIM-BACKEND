@@ -11,6 +11,7 @@ import { StockQuant } from '../database/entities/inventory/stock-quant.entity';
 import { StorePaymentMethod } from '../database/entities/payments/store-payment-method.entity';
 import { IntentsController } from './intents.controller';
 import { IntentsService } from './intents.service';
+import { PublicIntentsController } from './public-intents.controller';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { IntentsService } from './intents.service';
       StorePaymentMethod,
     ]),
   ],
-  controllers: [IntentsController],
+  controllers: [IntentsController, PublicIntentsController],
   providers: [IntentsService],
   exports: [IntentsService],
 })
