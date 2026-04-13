@@ -22,9 +22,9 @@ import {
   UpdateCapituloDto,
   UpdatePartidaDto,
 } from './dto/update-presupuesto.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('presupuestos')
 export class PresupuestosController {
   constructor(private readonly presupuestosService: PresupuestosService) {}
@@ -32,7 +32,11 @@ export class PresupuestosController {
   // ── Presupuestos ─────────────────────────────────────
   @Post()
   create(@Body() dto: CreatePresupuestoDto, @Request() req: any) {
-    return this.presupuestosService.create(dto, req.user.id, req.user.tenant_id);
+    return this.presupuestosService.create(
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Get('obra/:obraId')
@@ -57,7 +61,11 @@ export class PresupuestosController {
 
   @Patch(':id/aprobar')
   aprobar(@Param('id') id: string, @Request() req: any) {
-    return this.presupuestosService.aprobar(id, req.user.id, req.user.tenant_id);
+    return this.presupuestosService.aprobar(
+      id,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Patch(':id/recalcular')

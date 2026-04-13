@@ -16,16 +16,20 @@ import {
   CreateCertificacionDto,
   AprobarCertificacionDto,
 } from './dto/create-certificacion.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('certificaciones')
 export class CertificacionesController {
   constructor(private readonly service: CertificacionesService) {}
 
   @Post()
   create(@Body() dto: CreateCertificacionDto, @Request() req: any) {
-    return this.service.create(dto, req.user.id, req.user.tenant_id);
+    return this.service.create(
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Get('obra/:obraId')
@@ -44,7 +48,12 @@ export class CertificacionesController {
     @Body() dto: AprobarCertificacionDto,
     @Request() req: any,
   ) {
-    return this.service.cambiarEstado(id, dto, req.user.id, req.user.tenant_id);
+    return this.service.cambiarEstado(
+      id,
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Delete(':id')

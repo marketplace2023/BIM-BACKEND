@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
 import { ContractorProfile } from '../database/entities/verticals/contractor-profile.entity';
 import { EducationProviderProfile } from '../database/entities/verticals/education-provider-profile.entity';
@@ -15,6 +16,7 @@ import { mapLegacyStatusToFurStatus } from '../common/constants/marketplace.cons
 @Injectable()
 export class StoresService {
   constructor(
+    @InjectRepository(Tenant) private tenantsRepo: Repository<Tenant>,
     @InjectRepository(ResPartner) private partnersRepo: Repository<ResPartner>,
     @InjectRepository(ContractorProfile)
     private contractorRepo: Repository<ContractorProfile>,
@@ -111,6 +113,24 @@ export class StoresService {
     );
     await this._createProfile(partner.id, dto);
     return this.findOne(partner.id);
+  }
+
+  async createPublicOnboarding(dto: CreateStoreDto) {
+    const tenantId = await this.resolvePublicTenantId();
+
+    return this.create(tenantId, {
+      ...dto,
+      x_verification_status: 'draft',
+      attributes_json: {
+        ...(dto.attributes_json ?? {}),
+        fur_t: {
+          ...(((dto.attributes_json ?? {}) as Record<string, any>).fur_t ?? {}),
+          status: 'draft',
+          source: 'public_onboarding',
+          updated_at: new Date().toISOString(),
+        },
+      },
+    });
   }
 
   private async _createProfile(partnerId: string, dto: CreateStoreDto) {
@@ -571,5 +591,26 @@ export class StoresService {
   async getPublicStoreRatings(storeId: string, page = 1, limit = 10) {
     await this.findPublicOne(storeId);
     return this.getStoreRatings(storeId, page, limit);
+  }
+
+  private async resolvePublicTenantId() {
+    const masterTenant = await this.tenantsRepo.findOne({
+      where: { slug: 'marketplace-master' },
+    });
+
+    if (masterTenant) {
+      return masterTenant.id;
+    }
+
+    const fallback = await this.tenantsRepo.find({
+      order: { id: 'ASC' },
+      take: 1,
+    });
+
+    if (fallback[0]) {
+      return fallback[0].id;
+    }
+
+    throw new NotFoundException('Marketplace tenant not found');
   }
 }

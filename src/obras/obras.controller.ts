@@ -15,16 +15,20 @@ import {
 import { ObrasService } from './obras.service';
 import { CreateObraDto } from './dto/create-obra.dto';
 import { UpdateObraDto } from './dto/update-obra.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('obras')
 export class ObrasController {
   constructor(private readonly obrasService: ObrasService) {}
 
   @Post()
   create(@Body() dto: CreateObraDto, @Request() req: any) {
-    return this.obrasService.create(dto, req.user.id, req.user.tenant_id);
+    return this.obrasService.create(
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Get()

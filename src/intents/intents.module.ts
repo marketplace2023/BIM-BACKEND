@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BimAdminModule } from '../bim-admin/bim-admin.module';
 import { ProductTemplate } from '../database/entities/catalog/product-template.entity';
 import { ProductProduct } from '../database/entities/catalog/product-product.entity';
 import { CommerceIntent } from '../database/entities/commerce/commerce-intent.entity';
@@ -15,6 +16,7 @@ import { PublicIntentsController } from './public-intents.controller';
 
 @Module({
   imports: [
+    BimAdminModule,
     TypeOrmModule.forFeature([
       CommerceIntent,
       CommerceIntentItem,

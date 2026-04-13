@@ -19,6 +19,7 @@ import { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { extname, join } from 'path';
 import type { Request } from 'express';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StoresService } from './stores.service';
@@ -51,7 +52,7 @@ export class StoresController {
   ) {}
 
   /** POST /api/stores — Create store + vertical profile */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Post()
   create(
     @CurrentUser() user: { tenant_id: string },
@@ -61,7 +62,7 @@ export class StoresController {
   }
 
   /** POST /api/stores/upload-logo */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Post('upload-logo')
   @HttpCode(201)
   @UseInterceptors(
@@ -107,7 +108,7 @@ export class StoresController {
   }
 
   /** POST /api/stores/upload-images */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Post('upload-images')
   @HttpCode(201)
   @UseInterceptors(
@@ -164,6 +165,13 @@ export class StoresController {
     return this.svc.findPublic({ vertical, city, page, limit });
   }
 
+  /** POST /api/stores/public/onboard */
+  @Post('public/onboard')
+  @HttpCode(201)
+  createPublicOnboarding(@Body() dto: CreateStoreDto) {
+    return this.svc.createPublicOnboarding(dto);
+  }
+
   /** GET /api/stores/public/:id */
   @Get('public/:id')
   findPublicOne(@Param('id') id: string) {
@@ -197,7 +205,7 @@ export class StoresController {
   }
 
   /** GET /api/stores?vertical=contractor&city=Miami&verified=true&page=1&limit=20 */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Get()
   findAll(
     @CurrentUser() user: { tenant_id: string },
@@ -217,14 +225,14 @@ export class StoresController {
   }
 
   /** GET /api/stores/:id */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.svc.findOne(id);
   }
 
   /** PATCH /api/stores/:id */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -235,7 +243,7 @@ export class StoresController {
   }
 
   /** PATCH /api/stores/:id/publish */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id/publish')
   publish(
     @Param('id') id: string,
@@ -245,7 +253,7 @@ export class StoresController {
   }
 
   /** PATCH /api/stores/:id/unpublish */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id/unpublish')
   unpublish(
     @Param('id') id: string,
@@ -255,7 +263,7 @@ export class StoresController {
   }
 
   /** GET /api/stores/:id/products */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Get(':id/products')
   getProducts(
     @Param('id') id: string,

@@ -23,9 +23,9 @@ import {
   UpdateRecursoDto,
   UpdateDescomposicionDto,
 } from './dto/update-precio-unitario.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('precios-unitarios')
 export class PreciosUnitariosController {
   constructor(private readonly service: PreciosUnitariosService) {}

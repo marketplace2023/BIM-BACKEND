@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BimAdminModule } from '../bim-admin/bim-admin.module';
 import { BimCertificacion } from '../database/entities/bim/bim-certificacion.entity';
 import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certificacion.entity';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
@@ -15,6 +16,7 @@ import { CertificacionesController } from './certificaciones.controller';
       BimObra,
       BimPresupuesto,
     ]),
+    BimAdminModule,
   ],
   controllers: [CertificacionesController],
   providers: [CertificacionesService],

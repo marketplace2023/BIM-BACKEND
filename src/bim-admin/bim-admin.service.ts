@@ -11,6 +11,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { BimUser } from '../database/entities/bim/bim-user.entity';
+import { Tenant } from '../database/entities/core/tenant.entity';
+import { ResUser } from '../database/entities/identity/res-user.entity';
 import {
   CreateBimUserDto,
   UpdateBimUserDto,
@@ -22,6 +24,10 @@ export class BimAdminService implements OnModuleInit {
   constructor(
     @InjectRepository(BimUser)
     private readonly userRepo: Repository<BimUser>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(ResUser)
+    private readonly resUserRepo: Repository<ResUser>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -65,7 +71,20 @@ export class BimAdminService implements OnModuleInit {
     user.last_login_at = new Date();
     await this.userRepo.save(user);
 
-    const payload = { sub: user.id, email: user.email, role: user.role };
+    const tenantId = await this.resolveTenantId();
+    const platformUserId = await this.resolvePlatformUserId(tenantId);
+    const partnerId = await this.resolveMarketplacePartnerId(platformUserId, tenantId);
+    const payload = {
+      sub: user.id,
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      roles: [user.role],
+      tenant_id: tenantId,
+      platform_user_id: platformUserId,
+      partner_id: partnerId,
+      auth_scope: 'bim',
+    };
     const access_token = this.jwtService.sign(payload, {
       secret: this.config.get<string>('BIM_JWT_SECRET', 'bim-secret-change-me'),
       expiresIn: '8h',
@@ -73,6 +92,10 @@ export class BimAdminService implements OnModuleInit {
 
     const { password_hash: _, ...safeUser } = user;
     return { access_token, user: safeUser };
+  }
+
+  async findCurrentUser(userId: string): Promise<Partial<BimUser>> {
+    return this.findUser(userId);
   }
 
   async createUser(dto: CreateBimUserDto): Promise<BimUser> {
@@ -134,5 +157,74 @@ export class BimAdminService implements OnModuleInit {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) throw new NotFoundException(`Usuario #${id} no encontrado`);
     await this.userRepo.softRemove(user);
+  }
+
+  private async resolveTenantId(): Promise<string> {
+    const configuredTenantId = this.config.get<string>('BIM_DEFAULT_TENANT_ID');
+    if (configuredTenantId) {
+      return configuredTenantId;
+    }
+
+    const masterTenant = await this.tenantRepo.findOne({
+      where: { slug: 'marketplace-master' },
+    });
+    if (masterTenant) {
+      return masterTenant.id;
+    }
+
+    const fallbackTenant = await this.tenantRepo.find({
+      order: { id: 'ASC' },
+      take: 1,
+    });
+    if (fallbackTenant[0]) {
+      return fallbackTenant[0].id;
+    }
+
+    throw new UnauthorizedException(
+      'No existe un tenant disponible para operar el panel BIM',
+    );
+  }
+
+  private async resolvePlatformUserId(tenantId: string): Promise<string> {
+    const configuredUserId = this.config.get<string>('BIM_DEFAULT_PLATFORM_USER_ID');
+    if (configuredUserId) {
+      return configuredUserId;
+    }
+
+    const users = await this.resUserRepo.find({
+      where: { tenant_id: tenantId, is_active: 1 },
+      order: { id: 'ASC' },
+      take: 1,
+    });
+    if (users[0]) {
+      return users[0].id;
+    }
+
+    throw new UnauthorizedException(
+      'No existe un usuario operativo asociado al tenant BIM',
+    );
+  }
+
+  private async resolveMarketplacePartnerId(
+    platformUserId: string,
+    tenantId: string,
+  ): Promise<string> {
+    const configuredPartnerId = this.config.get<string>(
+      'BIM_DEFAULT_PARTNER_ID',
+    );
+    if (configuredPartnerId) {
+      return configuredPartnerId;
+    }
+
+    const platformUser = await this.resUserRepo.findOne({
+      where: { id: platformUserId, tenant_id: tenantId, is_active: 1 },
+    });
+    if (platformUser?.partner_id) {
+      return platformUser.partner_id;
+    }
+
+    throw new UnauthorizedException(
+      'No existe un partner comercial asociado al usuario BIM actual',
+    );
   }
 }

@@ -16,9 +16,9 @@ import { ContratistasService } from './contratistas.service';
 import { CreateContratistaDto } from './dto/create-contratista.dto';
 import { UpdateContratistaDto } from './dto/update-contratista.dto';
 import { AsignarContratistaDto } from './dto/asignar-contratista.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('contratistas')
 export class ContratistasController {
   constructor(private readonly contratistasService: ContratistasService) {}

@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Request,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -26,6 +27,19 @@ export class BimAdminController {
   @Post('auth/login')
   login(@Body() dto: BimLoginDto) {
     return this.service.login(dto);
+  }
+
+  @UseGuards(BimJwtGuard)
+  @Get('auth/me')
+  async me(@Request() req: any) {
+    const user = await this.service.findCurrentUser(req.user.sub ?? req.user.id);
+    return {
+      ...user,
+      tenant_id: req.user.tenant_id,
+      platform_user_id: req.user.platform_user_id,
+      partner_id: req.user.partner_id,
+      auth_scope: req.user.auth_scope,
+    };
   }
 
   // Protegido — gestión de usuarios BIM

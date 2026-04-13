@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 import { AddIntentItemDto } from './dto/add-intent-item.dto';
 import { SelectIntentPaymentMethodDto } from './dto/select-intent-payment-method.dto';
 import { SubmitIntentPaymentProofDto } from './dto/submit-intent-payment-proof.dto';
@@ -19,7 +19,7 @@ import { UpdateIntentItemDto } from './dto/update-intent-item.dto';
 import { UpdateIntentPaymentStatusDto } from './dto/update-intent-payment-status.dto';
 import { IntentsService } from './intents.service';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(BimJwtGuard)
 @Controller('intents')
 export class IntentsController {
   constructor(private readonly intentsService: IntentsService) {}

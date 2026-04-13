@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BimAdminModule } from '../bim-admin/bim-admin.module';
+import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
 import { ContractorProfile } from '../database/entities/verticals/contractor-profile.entity';
 import { EducationProviderProfile } from '../database/entities/verticals/education-provider-profile.entity';
@@ -13,6 +15,7 @@ import { StoresService } from './stores.service';
 
 @Module({
   imports: [
+    BimAdminModule,
     StorePaymentMethodsModule,
     TypeOrmModule.forFeature([
       ResPartner,
@@ -22,6 +25,7 @@ import { StoresService } from './stores.service';
       ProfessionalFirmProfile,
       SeoAgencyProfile,
       ProductTemplate,
+      Tenant,
     ]),
   ],
   controllers: [StoresController],

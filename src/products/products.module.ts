@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BimAdminModule } from '../bim-admin/bim-admin.module';
 import { ProductTemplate } from '../database/entities/catalog/product-template.entity';
 import { ProductProduct } from '../database/entities/catalog/product-product.entity';
 import { ProductImage } from '../database/entities/catalog/product-image.entity';
@@ -15,6 +16,7 @@ import { ProductsService } from './products.service';
 
 @Module({
   imports: [
+    BimAdminModule,
     TypeOrmModule.forFeature([
       ProductTemplate,
       ProductProduct,

@@ -19,6 +19,11 @@ import { ContratistasModule } from './contratistas/contratistas.module';
 import { PresupuestosModule } from './presupuestos/presupuestos.module';
 import { PreciosUnitariosModule } from './precios-unitarios/precios-unitarios.module';
 import { CertificacionesModule } from './certificaciones/certificaciones.module';
+import { MedicionesModule } from './mediciones/mediciones.module';
+import { ComputosModule } from './computos/computos.module';
+import { ReconsideracionesModule } from './reconsideraciones/reconsideraciones.module';
+import { ReportesModule } from './reportes/reportes.module';
+import { BimAdminModule } from './bim-admin/bim-admin.module';
 
 @Module({
   imports: [
@@ -53,7 +58,12 @@ import { CertificacionesModule } from './certificaciones/certificaciones.module'
     ContratistasModule,
     PresupuestosModule,
     PreciosUnitariosModule,
+    ComputosModule,
+    MedicionesModule,
+    ReconsideracionesModule,
     CertificacionesModule,
+    ReportesModule,
+    BimAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

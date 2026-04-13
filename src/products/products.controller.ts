@@ -19,7 +19,7 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import type { Request } from 'express';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -47,7 +47,7 @@ export class ProductsController {
   constructor(private svc: ProductsService) {}
 
   /** POST /api/products/upload-images */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Post('upload-images')
   @HttpCode(201)
   @UseInterceptors(
@@ -93,7 +93,7 @@ export class ProductsController {
   }
 
   /** PATCH /api/products/:id/images */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id/images')
   syncImages(
     @Param('id') id: string,
@@ -116,7 +116,7 @@ export class ProductsController {
   }
 
   /** POST /api/products */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Post()
   create(
     @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
@@ -154,7 +154,7 @@ export class ProductsController {
   }
 
   /** GET /api/products/inventory/hardware */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Get('inventory/hardware')
   getHardwareInventory(
     @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
@@ -176,7 +176,7 @@ export class ProductsController {
   }
 
   /** PATCH /api/products/:id */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -188,7 +188,7 @@ export class ProductsController {
   }
 
   /** DELETE /api/products/:id */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Delete(':id')
   remove(
     @Param('id') id: string,
@@ -199,7 +199,7 @@ export class ProductsController {
   }
 
   /** PATCH /api/products/:id/publish */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id/publish')
   publish(
     @Param('id') id: string,
@@ -210,7 +210,7 @@ export class ProductsController {
   }
 
   /** PATCH /api/products/:id/unpublish */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(BimJwtGuard)
   @Patch(':id/unpublish')
   unpublish(
     @Param('id') id: string,
