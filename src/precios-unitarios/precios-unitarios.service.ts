@@ -49,7 +49,8 @@ export class PreciosUnitariosService {
   }
 
   async findRecursos(tenantId: string, tipo?: string): Promise<BimRecurso[]> {
-    const where: any = { activo: 1, tenant_id: tenantId };
+    const tenantIds = tenantId === '1' ? ['1'] : ['1', tenantId];
+    const where: any = { activo: 1, tenant_id: In(tenantIds) };
     if (tipo) where.tipo = tipo;
     return this.recursoRepo.find({ where, order: { descripcion: 'ASC' } });
   }

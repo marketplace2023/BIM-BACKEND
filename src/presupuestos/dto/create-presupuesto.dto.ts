@@ -40,6 +40,41 @@ export class CreatePartidaDto {
   orden?: number;
 }
 
+export class CreatePartidaMaterialDto {
+  @IsOptional()
+  @IsIn(['material', 'equipo', 'mano_obra'])
+  tipo?: string;
+
+  @IsOptional()
+  @IsString()
+  recurso_id?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  codigo: string;
+
+  @IsString()
+  @IsNotEmpty()
+  descripcion: string;
+
+  @IsString()
+  @IsNotEmpty()
+  unidad: string;
+
+  @IsNumberString()
+  cantidad: string;
+
+  @IsNumberString()
+  costo: string;
+
+  @IsOptional()
+  @IsNumberString()
+  desperdicio_pct?: string;
+
+  @IsOptional()
+  orden?: number;
+}
+
 export class CreateCapituloDto {
   @IsString()
   @IsNotEmpty()

@@ -3,6 +3,7 @@ import {
   CreatePresupuestoDto,
   CreateCapituloDto,
   CreatePartidaDto,
+  CreatePartidaMaterialDto,
 } from './create-presupuesto.dto';
 
 export class UpdatePresupuestoDto extends PartialType(
@@ -14,3 +15,5 @@ export class UpdateCapituloDto extends PartialType(
 ) {}
 
 export class UpdatePartidaDto extends PartialType(CreatePartidaDto) {}
+
+export class UpdatePartidaMaterialDto extends PartialType(CreatePartidaMaterialDto) {}

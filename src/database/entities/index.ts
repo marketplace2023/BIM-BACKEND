@@ -56,6 +56,7 @@ export { BimPrecioUnitario } from './bim/bim-precio-unitario.entity';
 export { BimRecurso } from './bim/bim-recurso.entity';
 export { BimApuDescomposicion } from './bim/bim-apu-descomposicion.entity';
 export { BimPartida } from './bim/bim-partida.entity';
+export { BimPartidaMaterial } from './bim/bim-partida-material.entity';
 export { BimComputo } from './bim/bim-computo.entity';
 export { BimMedicion } from './bim/bim-medicion.entity';
 export { BimReconsideracion } from './bim/bim-reconsideracion.entity';

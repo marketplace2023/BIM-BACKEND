@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -16,11 +17,13 @@ import {
   CreatePresupuestoDto,
   CreateCapituloDto,
   CreatePartidaDto,
+  CreatePartidaMaterialDto,
 } from './dto/create-presupuesto.dto';
 import {
   UpdatePresupuestoDto,
   UpdateCapituloDto,
   UpdatePartidaDto,
+  UpdatePartidaMaterialDto,
 } from './dto/update-presupuesto.dto';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
@@ -144,5 +147,38 @@ export class PresupuestosController {
   @HttpCode(HttpStatus.NO_CONTENT)
   removePartida(@Param('id') id: string, @Request() req: any) {
     return this.presupuestosService.removePartida(id, req.user.tenant_id);
+  }
+
+  @Get('partidas/:id/materiales')
+  findPartidaMateriales(
+    @Param('id') id: string,
+    @Query('tipo') tipo: string | undefined,
+    @Request() req: any,
+  ) {
+    return this.presupuestosService.findPartidaMateriales(id, req.user.tenant_id, tipo);
+  }
+
+  @Post('partidas/:id/materiales')
+  createPartidaMaterial(
+    @Param('id') id: string,
+    @Body() dto: CreatePartidaMaterialDto,
+    @Request() req: any,
+  ) {
+    return this.presupuestosService.createPartidaMaterial(id, req.user.tenant_id, dto);
+  }
+
+  @Patch('partidas/materiales/:id')
+  updatePartidaMaterial(
+    @Param('id') id: string,
+    @Body() dto: UpdatePartidaMaterialDto,
+    @Request() req: any,
+  ) {
+    return this.presupuestosService.updatePartidaMaterial(id, req.user.tenant_id, dto);
+  }
+
+  @Delete('partidas/materiales/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removePartidaMaterial(@Param('id') id: string, @Request() req: any) {
+    return this.presupuestosService.removePartidaMaterial(id, req.user.tenant_id);
   }
 }

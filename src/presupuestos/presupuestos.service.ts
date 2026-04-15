@@ -8,16 +8,22 @@ import { Repository, DataSource } from 'typeorm';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
+import { BimPartidaMaterial } from '../database/entities/bim/bim-partida-material.entity';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
+import { BimApuDescomposicion } from '../database/entities/bim/bim-apu-descomposicion.entity';
+import { BimPrecioUnitario } from '../database/entities/bim/bim-precio-unitario.entity';
+import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
 import {
   CreatePresupuestoDto,
   CreateCapituloDto,
   CreatePartidaDto,
+  CreatePartidaMaterialDto,
 } from './dto/create-presupuesto.dto';
 import {
   UpdatePresupuestoDto,
   UpdateCapituloDto,
   UpdatePartidaDto,
+  UpdatePartidaMaterialDto,
 } from './dto/update-presupuesto.dto';
 
 @Injectable()
@@ -29,6 +35,10 @@ export class PresupuestosService {
     private readonly capituloRepo: Repository<BimCapitulo>,
     @InjectRepository(BimPartida)
     private readonly partidaRepo: Repository<BimPartida>,
+    @InjectRepository(BimPartidaMaterial)
+    private readonly partidaMaterialRepo: Repository<BimPartidaMaterial>,
+    @InjectRepository(BimRecurso)
+    private readonly recursoRepo: Repository<BimRecurso>,
     @InjectRepository(BimObra)
     private readonly obraRepo: Repository<BimObra>,
     private readonly dataSource: DataSource,
@@ -242,11 +252,18 @@ export class PresupuestosService {
     const cap = await this.findCapitulo(capituloId, tenantId);
     if (!cap)
       throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
-    const partida = this.partidaRepo.create({
-      capitulo_id: capituloId,
-      ...dto,
+    return this.dataSource.transaction(async (manager) => {
+      const partida = manager.create(BimPartida, {
+        capitulo_id: capituloId,
+        ...dto,
+      });
+      const savedPartida = await manager.save(BimPartida, partida);
+
+      await this.seedPartidaMaterialesFromApu(manager, savedPartida, tenantId);
+      await this.recalcularPrecioUnitarioPartida(savedPartida.id, tenantId, manager);
+
+      return this.findPartida(savedPartida.id, tenantId, manager);
     });
-    return this.partidaRepo.save(partida);
   }
 
   async updatePartida(
@@ -254,16 +271,87 @@ export class PresupuestosService {
     tenantId: string,
     dto: UpdatePartidaDto,
   ): Promise<BimPartida> {
-    const partida = await this.findPartida(id, tenantId);
-    if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
-    Object.assign(partida, dto);
-    return this.partidaRepo.save(partida);
+    return this.dataSource.transaction(async (manager) => {
+      const partida = await this.findPartida(id, tenantId, manager);
+      Object.assign(partida, dto);
+      const saved = await manager.save(BimPartida, partida);
+      return saved;
+    });
   }
 
   async removePartida(id: string, tenantId: string): Promise<void> {
     const partida = await this.findPartida(id, tenantId);
     if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
     await this.partidaRepo.remove(partida);
+  }
+
+  async findPartidaMateriales(
+    partidaId: string,
+    tenantId: string,
+    tipo?: string,
+  ): Promise<BimPartidaMaterial[]> {
+    const partida = await this.findPartida(partidaId, tenantId);
+    const where: { partida_id: string; tipo?: string } = { partida_id: partida.id };
+    if (tipo) where.tipo = tipo;
+    return this.partidaMaterialRepo.find({
+      where,
+      order: { orden: 'ASC', id: 'ASC' },
+    });
+  }
+
+  async createPartidaMaterial(
+    partidaId: string,
+    tenantId: string,
+    dto: CreatePartidaMaterialDto,
+  ): Promise<BimPartidaMaterial> {
+    return this.dataSource.transaction(async (manager) => {
+      const partida = await this.findPartida(partidaId, tenantId, manager);
+      const recurso = dto.recurso_id
+        ? await this.findAccessibleRecurso(dto.recurso_id, tenantId, manager)
+        : null;
+      const item = manager.create(BimPartidaMaterial, {
+        partida_id: partida.id,
+        recurso_id: recurso?.id ?? dto.recurso_id ?? null,
+        tipo: dto.tipo ?? recurso?.tipo ?? 'material',
+        codigo: dto.codigo,
+        descripcion: dto.descripcion,
+        unidad: dto.unidad,
+        cantidad: dto.cantidad,
+        costo: dto.costo,
+        desperdicio_pct: dto.desperdicio_pct ?? '0',
+        orden: dto.orden ?? 0,
+      });
+      const saved = await manager.save(BimPartidaMaterial, item);
+      await this.recalcularPrecioUnitarioPartida(partida.id, tenantId, manager);
+      return saved;
+    });
+  }
+
+  async updatePartidaMaterial(
+    id: string,
+    tenantId: string,
+    dto: UpdatePartidaMaterialDto,
+  ): Promise<BimPartidaMaterial> {
+    return this.dataSource.transaction(async (manager) => {
+      const item = await this.findPartidaMaterial(id, tenantId, manager);
+      if (dto.recurso_id) {
+        const recurso = await this.findAccessibleRecurso(dto.recurso_id, tenantId, manager);
+        item.recurso_id = recurso.id;
+      }
+      Object.assign(item, dto);
+      const saved = await manager.save(BimPartidaMaterial, item);
+      await this.recalcularPrecioUnitarioPartida(item.partida_id, tenantId, manager);
+      return saved;
+    });
+  }
+
+  async removePartidaMaterial(id: string, tenantId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const item = await this.findPartidaMaterial(id, tenantId, manager);
+      const partidaId = item.partida_id;
+      await manager.remove(BimPartidaMaterial, item);
+      await this.recalcularPrecioUnitarioPartida(partidaId, tenantId, manager);
+    });
   }
 
   // ── Recalcular total del presupuesto ────────────────────
@@ -299,8 +387,9 @@ export class PresupuestosService {
     return obra;
   }
 
-  private async findCapitulo(id: string, tenantId: string) {
-    const capitulo = await this.capituloRepo
+  private async findCapitulo(id: string, tenantId: string, manager?: any) {
+    const repo = manager ? manager.getRepository(BimCapitulo) : this.capituloRepo;
+    const capitulo = await repo
       .createQueryBuilder('cap')
       .innerJoin(
         BimPresupuesto,
@@ -315,8 +404,9 @@ export class PresupuestosService {
     return capitulo;
   }
 
-  private async findPartida(id: string, tenantId: string) {
-    const partida = await this.partidaRepo
+  private async findPartida(id: string, tenantId: string, manager?: any) {
+    const repo = manager ? manager.getRepository(BimPartida) : this.partidaRepo;
+    const partida = await repo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
       .innerJoin(
@@ -330,5 +420,116 @@ export class PresupuestosService {
 
     if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
     return partida;
+  }
+
+  private async findPartidaMaterial(id: string, tenantId: string, manager?: any) {
+    const repo = manager
+      ? manager.getRepository(BimPartidaMaterial)
+      : this.partidaMaterialRepo;
+    const item = await repo
+      .createQueryBuilder('material')
+      .innerJoin(BimPartida, 'partida', 'partida.id = material.partida_id')
+      .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = capitulo.presupuesto_id',
+      )
+      .where('material.id = :id', { id })
+      .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .getOne();
+
+    if (!item) {
+      throw new NotFoundException(`Material de partida #${id} no encontrado`);
+    }
+
+    return item;
+  }
+
+  private async findAccessibleRecurso(id: string, tenantId: string, manager?: any) {
+    const repo = manager ? manager.getRepository(BimRecurso) : this.recursoRepo;
+    const recurso = await repo
+      .createQueryBuilder('recurso')
+      .where('recurso.id = :id', { id: Number(id) })
+      .andWhere('recurso.tenant_id IN (:...tenantIds)', {
+        tenantIds: tenantId === '1' ? [1] : [1, Number(tenantId)],
+      })
+      .andWhere('recurso.activo = 1')
+      .getOne();
+
+    if (!recurso) throw new NotFoundException(`Recurso #${id} no encontrado`);
+    return recurso;
+  }
+
+  private async seedPartidaMaterialesFromApu(
+    manager: any,
+    partida: BimPartida,
+    tenantId: string,
+  ): Promise<void> {
+    if (!partida.precio_unitario_id) return;
+
+    const pu = await manager
+      .getRepository(BimPrecioUnitario)
+      .createQueryBuilder('pu')
+      .where('pu.id = :id', { id: Number(partida.precio_unitario_id) })
+      .andWhere('pu.tenant_id IN (:...tenantIds)', {
+        tenantIds: tenantId === '1' ? [1] : [1, Number(tenantId)],
+      })
+      .getOne();
+
+    if (!pu) return;
+
+    const materiales = await manager
+      .getRepository(BimApuDescomposicion)
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.recurso', 'recurso')
+      .where('d.precio_unitario_id = :puId', { puId: Number(pu.id) })
+      .andWhere('d.tipo IN (:...tipos)', {
+        tipos: ['material', 'equipo', 'mano_obra'],
+      })
+      .orderBy('d.orden', 'ASC')
+      .addOrderBy('d.id', 'ASC')
+      .getMany();
+
+    if (!materiales.length) return;
+
+    const rows = materiales.map((item) =>
+      manager.create(BimPartidaMaterial, {
+        partida_id: partida.id,
+        recurso_id: item.recurso_id,
+        tipo: item.tipo,
+        codigo: item.recurso?.codigo ?? `MAT-${item.recurso_id}`,
+        descripcion: item.recurso?.descripcion ?? partida.descripcion,
+        unidad: item.recurso?.unidad ?? partida.unidad,
+        cantidad: item.cantidad,
+        costo: item.precio_recurso,
+        desperdicio_pct: '0',
+        orden: item.orden,
+      }),
+    );
+
+    await manager.save(BimPartidaMaterial, rows);
+  }
+
+  private async recalcularPrecioUnitarioPartida(
+    partidaId: string,
+    tenantId: string,
+    manager?: any,
+  ): Promise<void> {
+    const materialRepo = manager
+      ? manager.getRepository(BimPartidaMaterial)
+      : this.partidaMaterialRepo;
+    const partidaRepo = manager ? manager.getRepository(BimPartida) : this.partidaRepo;
+
+    const result = await materialRepo
+      .createQueryBuilder('material')
+      .where('material.partida_id = :partidaId', { partidaId })
+      .select('SUM(material.total)', 'total')
+      .getRawOne();
+
+    const partida = await this.findPartida(partidaId, tenantId, manager);
+    partida.precio_unitario =
+      (parseFloat((result as { total?: string | null } | null)?.total ?? '0') || 0).toFixed(4);
+    await partidaRepo.save(partida);
   }
 }
