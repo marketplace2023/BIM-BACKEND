@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  MinLength,
   MaxLength,
 } from 'class-validator';
 import { FUR_STATUSES } from '../../common/constants/marketplace.constants';
@@ -33,6 +34,15 @@ export class CreateStoreDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @MinLength(8)
+  @IsOptional()
+  password?: string;
+
+  @IsString()
+  @IsOptional()
+  username?: string;
 
   @IsString()
   @IsOptional()

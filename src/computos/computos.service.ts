@@ -29,7 +29,9 @@ export class ComputosService {
     const partida = await this.findTenantPartida(dto.partida_id, tenantId);
 
     if (partida.obra_id !== obra.id) {
-      throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+      throw new BadRequestException(
+        'La partida no pertenece a la obra seleccionada',
+      );
     }
 
     const computo = this.computoRepo.create({
@@ -90,10 +92,14 @@ export class ComputosService {
     if (dto.partida_id && dto.partida_id !== computo.partida_id) {
       const partida = await this.findTenantPartida(dto.partida_id, tenantId);
       if (dto.obra_id && partida.obra_id !== dto.obra_id) {
-        throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+        throw new BadRequestException(
+          'La partida no pertenece a la obra seleccionada',
+        );
       }
       if (!dto.obra_id && partida.obra_id !== computo.obra_id) {
-        throw new BadRequestException('La partida no pertenece a la obra actual');
+        throw new BadRequestException(
+          'La partida no pertenece a la obra actual',
+        );
       }
       computo.partida_id = dto.partida_id;
     }
@@ -115,7 +121,12 @@ export class ComputosService {
     await this.computoRepo.remove(computo);
   }
 
-  private calculateResult(input: Pick<BimComputo, 'formula_tipo' | 'cantidad' | 'largo' | 'ancho' | 'alto'>) {
+  private calculateResult(
+    input: Pick<
+      BimComputo,
+      'formula_tipo' | 'cantidad' | 'largo' | 'ancho' | 'alto'
+    >,
+  ) {
     const cantidad = Number.parseFloat(input.cantidad ?? '0') || 0;
     const largo = Number.parseFloat(input.largo ?? '0') || 0;
     const ancho = Number.parseFloat(input.ancho ?? '0') || 0;
@@ -135,7 +146,9 @@ export class ComputosService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }
@@ -144,7 +157,11 @@ export class ComputosService {
     const partida = await this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
-      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = capitulo.presupuesto_id',
+      )
       .innerJoin(BimObra, 'obra', 'obra.id = presupuesto.obra_id')
       .where('partida.id = :id', { id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })

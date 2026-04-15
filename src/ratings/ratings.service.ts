@@ -73,7 +73,8 @@ export class RatingsService {
     });
 
     const average = ratings.length
-      ? ratings.reduce((sum, item) => sum + Number(item.rating), 0) / ratings.length
+      ? ratings.reduce((sum, item) => sum + Number(item.rating), 0) /
+        ratings.length
       : 0;
 
     await this.productsRepo.update(productId, {
@@ -84,7 +85,9 @@ export class RatingsService {
   async create(tenantId: string, userId: string, dto: CreateRatingDto) {
     let product: ProductTemplate | null = null;
     if (dto.product_tmpl_id) {
-      product = await this.productsRepo.findOne({ where: { id: dto.product_tmpl_id } });
+      product = await this.productsRepo.findOne({
+        where: { id: dto.product_tmpl_id },
+      });
       if (!product) {
         throw new NotFoundException('Product not found');
       }
@@ -153,7 +156,9 @@ export class RatingsService {
       ]);
 
     if (filters.partner_id) {
-      qb.andWhere('rating.partner_id = :partnerId', { partnerId: filters.partner_id });
+      qb.andWhere('rating.partner_id = :partnerId', {
+        partnerId: filters.partner_id,
+      });
     }
 
     if (filters.product_tmpl_id) {
@@ -168,12 +173,16 @@ export class RatingsService {
       });
     }
 
-    const countQb = this.repo.createQueryBuilder('rating').where('rating.status = :status', {
-      status: 'published',
-    });
+    const countQb = this.repo
+      .createQueryBuilder('rating')
+      .where('rating.status = :status', {
+        status: 'published',
+      });
 
     if (filters.partner_id) {
-      countQb.andWhere('rating.partner_id = :partnerId', { partnerId: filters.partner_id });
+      countQb.andWhere('rating.partner_id = :partnerId', {
+        partnerId: filters.partner_id,
+      });
     }
 
     if (filters.product_tmpl_id) {
@@ -188,14 +197,19 @@ export class RatingsService {
       });
     }
 
-    const [rows, total] = await Promise.all([qb.getRawMany(), countQb.getCount()]);
+    const [rows, total] = await Promise.all([
+      qb.getRawMany(),
+      countQb.getCount(),
+    ]);
 
     return {
       data: rows.map((row) => ({
         id: String(row.id),
         reviewer_user_id: String(row.reviewer_user_id),
         partner_id: row.partner_id ? String(row.partner_id) : null,
-        product_tmpl_id: row.product_tmpl_id ? String(row.product_tmpl_id) : null,
+        product_tmpl_id: row.product_tmpl_id
+          ? String(row.product_tmpl_id)
+          : null,
         order_id: row.order_id ? String(row.order_id) : null,
         rating: String(row.rating),
         title: row.title ? String(row.title) : null,
@@ -203,7 +217,9 @@ export class RatingsService {
         status: String(row.status),
         reply_comment: row.reply_comment ? String(row.reply_comment) : null,
         reply_created_at: row.reply_created_at ?? null,
-        replier_user_id: row.replier_user_id ? String(row.replier_user_id) : null,
+        replier_user_id: row.replier_user_id
+          ? String(row.replier_user_id)
+          : null,
         created_at: row.created_at,
         product_name: row.product_name ? String(row.product_name) : null,
         product_vertical_type: row.product_vertical_type
@@ -213,13 +229,17 @@ export class RatingsService {
         reviewer: row.reviewer_id
           ? {
               id: String(row.reviewer_id),
-              username: row.reviewer_username ? String(row.reviewer_username) : 'Usuario',
+              username: row.reviewer_username
+                ? String(row.reviewer_username)
+                : 'Usuario',
             }
           : null,
         replier: row.replier_id
           ? {
               id: String(row.replier_id),
-              username: row.replier_username ? String(row.replier_username) : 'Tienda',
+              username: row.replier_username
+                ? String(row.replier_username)
+                : 'Tienda',
             }
           : null,
       })),
@@ -240,7 +260,10 @@ export class RatingsService {
       throw new NotFoundException('Rating not found');
     }
 
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const targetPartnerId = rating.partner_id;
 
     if (!targetPartnerId || targetPartnerId !== managedPartnerId) {

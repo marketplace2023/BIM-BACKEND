@@ -33,11 +33,14 @@ export class OrdersService {
     private coursesRepo: Repository<Course>,
   ) {}
 
-  private async resolveManagedPartnerId(user: {
-    tenant_id: string;
-    partner_id: string;
-    email?: string;
-  }, requestedPartnerId?: string) {
+  private async resolveManagedPartnerId(
+    user: {
+      tenant_id: string;
+      partner_id: string;
+      email?: string;
+    },
+    requestedPartnerId?: string,
+  ) {
     if (!requestedPartnerId || requestedPartnerId === user.partner_id) {
       return user.partner_id;
     }
@@ -155,7 +158,9 @@ export class OrdersService {
       .skip((page - 1) * limit)
       .take(limit);
     const [data, total] = await qb.getManyAndCount();
-    const hydrated = await Promise.all(data.map((order) => this._loadWithLines(order.id)));
+    const hydrated = await Promise.all(
+      data.map((order) => this._loadWithLines(order.id)),
+    );
     return { data: hydrated, total, page, limit };
   }
 
@@ -166,12 +171,19 @@ export class OrdersService {
     page = 1,
     limit = 20,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
 
     const qb = this.ordersRepo
       .createQueryBuilder('o')
       .innerJoin(SaleOrderLine, 'line', 'line.order_id = o.id')
-      .innerJoin(ProductTemplate, 'product', 'product.id = line.product_tmpl_id')
+      .innerJoin(
+        ProductTemplate,
+        'product',
+        'product.id = line.product_tmpl_id',
+      )
       .where('o.tenant_id = :tenantId', { tenantId: user.tenant_id })
       .andWhere('product.partner_id = :partnerId', { partnerId })
       .andWhere('product.deleted_at IS NULL')
@@ -185,7 +197,9 @@ export class OrdersService {
     }
 
     const [data, total] = await qb.getManyAndCount();
-    const hydrated = await Promise.all(data.map((order) => this._loadWithLines(order.id)));
+    const hydrated = await Promise.all(
+      data.map((order) => this._loadWithLines(order.id)),
+    );
     return { data: hydrated, total, page, limit };
   }
 
@@ -194,7 +208,11 @@ export class OrdersService {
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId?: string,
   ) {
-    const order = await this.ensureStoreOrderAccess(id, user, requestedPartnerId);
+    const order = await this.ensureStoreOrderAccess(
+      id,
+      user,
+      requestedPartnerId,
+    );
     return this._loadWithLines(order.id);
   }
 
@@ -204,15 +222,26 @@ export class OrdersService {
     page = 1,
     limit = 20,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
 
     const qb = this.linesRepo
       .createQueryBuilder('line')
       .innerJoin(SaleOrder, 'order', 'order.id = line.order_id')
-      .innerJoin(ProductTemplate, 'product', 'product.id = line.product_tmpl_id')
+      .innerJoin(
+        ProductTemplate,
+        'product',
+        'product.id = line.product_tmpl_id',
+      )
       .leftJoin(Course, 'course', 'course.product_tmpl_id = product.id')
       .leftJoin(ResPartner, 'student', 'student.id = order.partner_id')
-      .leftJoin(StorePaymentMethod, 'payment_method', 'payment_method.id = order.payment_method_id')
+      .leftJoin(
+        StorePaymentMethod,
+        'payment_method',
+        'payment_method.id = order.payment_method_id',
+      )
       .where('product.partner_id = :partnerId', { partnerId })
       .andWhere('product.vertical_type = :verticalType', {
         verticalType: 'education_provider',
@@ -252,7 +281,10 @@ export class OrdersService {
       ]);
 
     const countQb = qb.clone();
-    const [rows, total] = await Promise.all([qb.getRawMany(), countQb.getCount()]);
+    const [rows, total] = await Promise.all([
+      qb.getRawMany(),
+      countQb.getCount(),
+    ]);
 
     return {
       data: rows.map((row) => {
@@ -265,27 +297,42 @@ export class OrdersService {
           order_number: String(row.order_number),
           status: String(row.order_status),
           payment_status: String(row.payment_status ?? 'unpaid'),
-          payment_method_id: row.payment_method_id ? String(row.payment_method_id) : null,
-          payment_reference: row.payment_reference ? String(row.payment_reference) : null,
-          payment_proof_url: row.payment_proof_url ? String(row.payment_proof_url) : null,
+          payment_method_id: row.payment_method_id
+            ? String(row.payment_method_id)
+            : null,
+          payment_reference: row.payment_reference
+            ? String(row.payment_reference)
+            : null,
+          payment_proof_url: row.payment_proof_url
+            ? String(row.payment_proof_url)
+            : null,
           payment_notes: row.payment_notes ? String(row.payment_notes) : null,
-          payment_method_title: row.payment_method_title ? String(row.payment_method_title) : null,
+          payment_method_title: row.payment_method_title
+            ? String(row.payment_method_title)
+            : null,
           created_at: row.order_created_at,
           start_date:
             (typeof lineMeta?.start_date === 'string' && lineMeta.start_date) ||
-            (typeof orderMeta?.start_date === 'string' && orderMeta.start_date) ||
+            (typeof orderMeta?.start_date === 'string' &&
+              orderMeta.start_date) ||
             null,
           student: {
             id: row.student_id ? String(row.student_id) : null,
-            name: row.student_name ? String(row.student_name) : 'Estudiante sin nombre',
+            name: row.student_name
+              ? String(row.student_name)
+              : 'Estudiante sin nombre',
             email: row.student_email ? String(row.student_email) : null,
           },
           course: {
             id: String(row.product_id),
             name: String(row.product_name),
-            cover_image_url: row.cover_image_url ? String(row.cover_image_url) : null,
+            cover_image_url: row.cover_image_url
+              ? String(row.cover_image_url)
+              : null,
             course_mode: row.course_mode ? String(row.course_mode) : null,
-            duration_hours: row.duration_hours ? String(row.duration_hours) : null,
+            duration_hours: row.duration_hours
+              ? String(row.duration_hours)
+              : null,
             certificate_available: Boolean(row.certificate_available),
           },
           qty: Number(row.line_qty ?? 0),
@@ -331,7 +378,11 @@ export class OrdersService {
     requestedPartnerId: string | undefined,
     dto: UpdateOrderStatusDto,
   ) {
-    const order = await this.ensureStoreOrderAccess(id, user, requestedPartnerId);
+    const order = await this.ensureStoreOrderAccess(
+      id,
+      user,
+      requestedPartnerId,
+    );
     await this.ordersRepo.update(order.id, { status: dto.status });
     return this._loadWithLines(order.id);
   }
@@ -341,9 +392,12 @@ export class OrdersService {
     user: { tenant_id: string; partner_id: string },
     dto: SelectOrderPaymentMethodDto,
   ) {
-    const order = await this.ordersRepo.findOne({ where: { id, tenant_id: user.tenant_id } });
+    const order = await this.ordersRepo.findOne({
+      where: { id, tenant_id: user.tenant_id },
+    });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.partner_id !== user.partner_id) throw new ForbiddenException('Access denied');
+    if (order.partner_id !== user.partner_id)
+      throw new ForbiddenException('Access denied');
 
     const method = await this.paymentMethodsRepo.findOne({
       where: {
@@ -366,10 +420,14 @@ export class OrdersService {
     user: { tenant_id: string; partner_id: string },
     dto: SubmitOrderPaymentProofDto,
   ) {
-    const order = await this.ordersRepo.findOne({ where: { id, tenant_id: user.tenant_id } });
+    const order = await this.ordersRepo.findOne({
+      where: { id, tenant_id: user.tenant_id },
+    });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.partner_id !== user.partner_id) throw new ForbiddenException('Access denied');
-    if (!order.payment_method_id) throw new ForbiddenException('Select a payment method first');
+    if (order.partner_id !== user.partner_id)
+      throw new ForbiddenException('Access denied');
+    if (!order.payment_method_id)
+      throw new ForbiddenException('Select a payment method first');
 
     order.payment_reference = dto.payment_reference ?? null;
     order.payment_proof_url = dto.payment_proof_url ?? null;
@@ -385,10 +443,16 @@ export class OrdersService {
     requestedPartnerId: string | undefined,
     dto: UpdateOrderPaymentStatusDto,
   ) {
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
-    const order = await this.ordersRepo.findOne({ where: { id, tenant_id: user.tenant_id } });
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
+    const order = await this.ordersRepo.findOne({
+      where: { id, tenant_id: user.tenant_id },
+    });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.x_professional_id !== managedPartnerId) throw new ForbiddenException('Access denied');
+    if (order.x_professional_id !== managedPartnerId)
+      throw new ForbiddenException('Access denied');
 
     order.payment_status = dto.payment_status;
     if (dto.payment_status === 'paid') {
@@ -414,15 +478,24 @@ export class OrdersService {
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId?: string,
   ) {
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
 
     const order = await this.ordersRepo
       .createQueryBuilder('o')
       .innerJoin(SaleOrderLine, 'line', 'line.order_id = o.id')
-      .innerJoin(ProductTemplate, 'product', 'product.id = line.product_tmpl_id')
+      .innerJoin(
+        ProductTemplate,
+        'product',
+        'product.id = line.product_tmpl_id',
+      )
       .where('o.id = :id', { id })
       .andWhere('o.tenant_id = :tenantId', { tenantId: user.tenant_id })
-      .andWhere('product.partner_id = :partnerId', { partnerId: managedPartnerId })
+      .andWhere('product.partner_id = :partnerId', {
+        partnerId: managedPartnerId,
+      })
       .andWhere('product.deleted_at IS NULL')
       .getOne();
 

@@ -38,8 +38,12 @@ export class AddStorePaymentMethods1776000004000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`store_payment_method\` DROP FOREIGN KEY \`FK_store_payment_method_partner\``);
-    await queryRunner.query(`ALTER TABLE \`store_payment_method\` DROP FOREIGN KEY \`FK_store_payment_method_tenant\``);
+    await queryRunner.query(
+      `ALTER TABLE \`store_payment_method\` DROP FOREIGN KEY \`FK_store_payment_method_partner\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`store_payment_method\` DROP FOREIGN KEY \`FK_store_payment_method_tenant\``,
+    );
     await queryRunner.query(`DROP TABLE \`store_payment_method\``);
   }
 }

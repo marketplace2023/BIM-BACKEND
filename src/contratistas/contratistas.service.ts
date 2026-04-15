@@ -23,7 +23,10 @@ export class ContratistasService {
     private readonly obraRepo: Repository<BimObra>,
   ) {}
 
-  async create(dto: CreateContratistaDto, tenantId: string): Promise<BimContratista> {
+  async create(
+    dto: CreateContratistaDto,
+    tenantId: string,
+  ): Promise<BimContratista> {
     if (dto.rut_nif) {
       const exists = await this.contratistaRepo.findOne({
         where: { rut_nif: dto.rut_nif, tenant_id: tenantId },
@@ -34,7 +37,10 @@ export class ContratistasService {
         );
       }
     }
-    const contratista = this.contratistaRepo.create({ ...dto, tenant_id: tenantId });
+    const contratista = this.contratistaRepo.create({
+      ...dto,
+      tenant_id: tenantId,
+    });
     return this.contratistaRepo.save(contratista);
   }
 
@@ -123,7 +129,9 @@ export class ContratistasService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }

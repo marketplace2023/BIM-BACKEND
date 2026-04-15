@@ -97,7 +97,10 @@ export class PresupuestosService {
     }
   }
 
-  async findByObra(obraId: string, tenantId: string): Promise<BimPresupuesto[]> {
+  async findByObra(
+    obraId: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto[]> {
     await this.findTenantObra(obraId, tenantId);
     return this.presupuestoRepo.find({
       where: { obra_id: obraId, tenant_id: tenantId },
@@ -169,6 +172,23 @@ export class PresupuestosService {
     p.estado = 'aprobado';
     p.aprobado_por = userId;
     p.fecha_aprobacion = new Date();
+    return this.presupuestoRepo.save(p);
+  }
+
+  async devolverABorrador(
+    id: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto> {
+    const p = await this.findOne(id, tenantId);
+    if (p.estado !== 'aprobado' && p.estado !== 'revisado') {
+      throw new BadRequestException(
+        'Solo se pueden devolver a borrador presupuestos aprobados o revisados',
+      );
+    }
+
+    p.estado = 'borrador';
+    p.aprobado_por = null;
+    p.fecha_aprobacion = null;
     return this.presupuestoRepo.save(p);
   }
 
@@ -272,7 +292,9 @@ export class PresupuestosService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }
@@ -280,7 +302,11 @@ export class PresupuestosService {
   private async findCapitulo(id: string, tenantId: string) {
     const capitulo = await this.capituloRepo
       .createQueryBuilder('cap')
-      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = cap.presupuesto_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = cap.presupuesto_id',
+      )
       .where('cap.id = :id', { id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
       .getOne();
@@ -293,7 +319,11 @@ export class PresupuestosService {
     const partida = await this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
-      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = capitulo.presupuesto_id',
+      )
       .where('partida.id = :id', { id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
       .getOne();

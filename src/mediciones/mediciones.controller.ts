@@ -44,7 +44,11 @@ export class MedicionesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateMedicionDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateMedicionDto,
+    @Request() req: any,
+  ) {
     return this.medicionesService.update(id, req.user.tenant_id, dto);
   }
 

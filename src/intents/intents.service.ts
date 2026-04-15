@@ -144,7 +144,9 @@ export class IntentsService {
 
   private async validateEducationPayload(payload?: Record<string, any>) {
     if (!payload?.student_name || !payload?.student_email) {
-      throw new BadRequestException('Education enrollment requires student name and email');
+      throw new BadRequestException(
+        'Education enrollment requires student name and email',
+      );
     }
   }
 
@@ -157,14 +159,17 @@ export class IntentsService {
     });
 
     const available = quants.reduce(
-      (sum, item) => sum + Number(item.quantity ?? 0) - Number(item.reserved_quantity ?? 0),
+      (sum, item) =>
+        sum + Number(item.quantity ?? 0) - Number(item.reserved_quantity ?? 0),
       0,
     );
     const fallback = Number((product.x_attributes_json ?? {}).stock ?? 0);
     const finalAvailable = available > 0 ? available : fallback;
 
     if (finalAvailable > 0 && qty > finalAvailable) {
-      throw new BadRequestException('Requested quantity exceeds available stock');
+      throw new BadRequestException(
+        'Requested quantity exceeds available stock',
+      );
     }
   }
 
@@ -196,19 +201,19 @@ export class IntentsService {
         store_partner_id: input.storePartnerId,
         vertical_type: input.verticalType,
         intent_type: input.intentType,
-          status: 'draft',
-          currency_code: input.currencyCode,
-          payment_status: 'unpaid',
-          payment_method_id: null,
-          payment_reference: null,
-          payment_proof_url: null,
-          payment_notes: null,
-          paid_at: null,
-          validated_by_store_user_id: null,
-          validated_at: null,
-          summary_json: null,
-          converted_order_id: null,
-        }),
+        status: 'draft',
+        currency_code: input.currencyCode,
+        payment_status: 'unpaid',
+        payment_method_id: null,
+        payment_reference: null,
+        payment_proof_url: null,
+        payment_notes: null,
+        paid_at: null,
+        validated_by_store_user_id: null,
+        validated_at: null,
+        summary_json: null,
+        converted_order_id: null,
+      }),
     );
   }
 
@@ -298,7 +303,8 @@ export class IntentsService {
       country: dto.country?.trim(),
     });
 
-    const intentType = DEFAULT_INTENT_BY_VERTICAL[product.vertical_type] ?? 'quote_request';
+    const intentType =
+      DEFAULT_INTENT_BY_VERTICAL[product.vertical_type] ?? 'quote_request';
     const qty = Number(dto.qty ?? 1);
 
     if (product.vertical_type === 'hardware_store') {
@@ -341,7 +347,9 @@ export class IntentsService {
         intent_id: intent.id,
         product_tmpl_id: product.id,
         product_variant_id: null,
-        item_type: DEFAULT_ITEM_TYPE_BY_VERTICAL[product.vertical_type] ?? product.vertical_type,
+        item_type:
+          DEFAULT_ITEM_TYPE_BY_VERTICAL[product.vertical_type] ??
+          product.vertical_type,
         name_snapshot: product.name,
         price_snapshot: product.list_price,
         qty: String(qty),
@@ -375,7 +383,8 @@ export class IntentsService {
       throw new NotFoundException('Product not found');
     }
 
-    const intentType = dto.intent_type ?? DEFAULT_INTENT_BY_VERTICAL[product.vertical_type];
+    const intentType =
+      dto.intent_type ?? DEFAULT_INTENT_BY_VERTICAL[product.vertical_type];
     if (!intentType) {
       throw new BadRequestException('Unsupported vertical for commerce intent');
     }
@@ -398,7 +407,9 @@ export class IntentsService {
         where: { id: dto.product_variant_id, product_tmpl_id: product.id },
       });
       if (!variant) {
-        throw new BadRequestException('Invalid product variant for this product');
+        throw new BadRequestException(
+          'Invalid product variant for this product',
+        );
       }
     }
 
@@ -418,7 +429,9 @@ export class IntentsService {
         where: {
           intent_id: intent.id,
           product_tmpl_id: product.id,
-          ...(dto.product_variant_id ? { product_variant_id: dto.product_variant_id } : {}),
+          ...(dto.product_variant_id
+            ? { product_variant_id: dto.product_variant_id }
+            : {}),
         },
       });
     }
@@ -433,7 +446,9 @@ export class IntentsService {
           intent_id: intent.id,
           product_tmpl_id: product.id,
           product_variant_id: dto.product_variant_id ?? null,
-          item_type: DEFAULT_ITEM_TYPE_BY_VERTICAL[product.vertical_type] ?? product.vertical_type,
+          item_type:
+            DEFAULT_ITEM_TYPE_BY_VERTICAL[product.vertical_type] ??
+            product.vertical_type,
           name_snapshot: product.name,
           price_snapshot: product.list_price,
           qty: String(qty),
@@ -453,8 +468,14 @@ export class IntentsService {
     const item = await this.itemsRepo.findOne({ where: { id: itemId } });
     if (!item) throw new NotFoundException('Intent item not found');
 
-    const intent = await this.intentsRepo.findOne({ where: { id: item.intent_id } });
-    if (!intent || intent.buyer_partner_id !== user.partner_id || intent.tenant_id !== user.tenant_id) {
+    const intent = await this.intentsRepo.findOne({
+      where: { id: item.intent_id },
+    });
+    if (
+      !intent ||
+      intent.buyer_partner_id !== user.partner_id ||
+      intent.tenant_id !== user.tenant_id
+    ) {
       throw new ForbiddenException('Access denied');
     }
 
@@ -474,12 +495,21 @@ export class IntentsService {
     return this.hydrateIntent(intent);
   }
 
-  async removeItem(itemId: string, user: { tenant_id: string; partner_id: string }) {
+  async removeItem(
+    itemId: string,
+    user: { tenant_id: string; partner_id: string },
+  ) {
     const item = await this.itemsRepo.findOne({ where: { id: itemId } });
     if (!item) throw new NotFoundException('Intent item not found');
 
-    const intent = await this.intentsRepo.findOne({ where: { id: item.intent_id } });
-    if (!intent || intent.buyer_partner_id !== user.partner_id || intent.tenant_id !== user.tenant_id) {
+    const intent = await this.intentsRepo.findOne({
+      where: { id: item.intent_id },
+    });
+    if (
+      !intent ||
+      intent.buyer_partner_id !== user.partner_id ||
+      intent.tenant_id !== user.tenant_id
+    ) {
       throw new ForbiddenException('Access denied');
     }
 
@@ -488,7 +518,9 @@ export class IntentsService {
     }
 
     await this.itemsRepo.delete(itemId);
-    const remaining = await this.itemsRepo.count({ where: { intent_id: intent.id } });
+    const remaining = await this.itemsRepo.count({
+      where: { intent_id: intent.id },
+    });
     if (remaining === 0) {
       await this.intentsRepo.delete(intent.id);
       return { deleted: true };
@@ -504,14 +536,20 @@ export class IntentsService {
     const qb = this.intentsRepo
       .createQueryBuilder('intent')
       .where('intent.tenant_id = :tenantId', { tenantId: user.tenant_id })
-      .andWhere('intent.buyer_partner_id = :buyerPartnerId', { buyerPartnerId: user.partner_id })
+      .andWhere('intent.buyer_partner_id = :buyerPartnerId', {
+        buyerPartnerId: user.partner_id,
+      })
       .orderBy('intent.updated_at', 'DESC');
 
     if (filters.verticalType) {
-      qb.andWhere('intent.vertical_type = :verticalType', { verticalType: filters.verticalType });
+      qb.andWhere('intent.vertical_type = :verticalType', {
+        verticalType: filters.verticalType,
+      });
     }
     if (filters.intentType) {
-      qb.andWhere('intent.intent_type = :intentType', { intentType: filters.intentType });
+      qb.andWhere('intent.intent_type = :intentType', {
+        intentType: filters.intentType,
+      });
     }
     if (filters.status) {
       qb.andWhere('intent.status = :status', { status: filters.status });
@@ -526,19 +564,28 @@ export class IntentsService {
     requestedStorePartnerId: string | undefined,
     filters: { verticalType?: string; intentType?: string; status?: string },
   ) {
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedStorePartnerId);
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedStorePartnerId,
+    );
 
     const qb = this.intentsRepo
       .createQueryBuilder('intent')
       .where('intent.tenant_id = :tenantId', { tenantId: user.tenant_id })
-      .andWhere('intent.store_partner_id = :storePartnerId', { storePartnerId: managedPartnerId })
+      .andWhere('intent.store_partner_id = :storePartnerId', {
+        storePartnerId: managedPartnerId,
+      })
       .orderBy('intent.updated_at', 'DESC');
 
     if (filters.verticalType) {
-      qb.andWhere('intent.vertical_type = :verticalType', { verticalType: filters.verticalType });
+      qb.andWhere('intent.vertical_type = :verticalType', {
+        verticalType: filters.verticalType,
+      });
     }
     if (filters.intentType) {
-      qb.andWhere('intent.intent_type = :intentType', { intentType: filters.intentType });
+      qb.andWhere('intent.intent_type = :intentType', {
+        intentType: filters.intentType,
+      });
     }
     if (filters.status) {
       qb.andWhere('intent.status = :status', { status: filters.status });
@@ -564,12 +611,16 @@ export class IntentsService {
       throw new BadRequestException('Only draft intents can be submitted');
     }
 
-    const items = await this.itemsRepo.find({ where: { intent_id: intent.id } });
+    const items = await this.itemsRepo.find({
+      where: { intent_id: intent.id },
+    });
     if (items.length === 0) {
       throw new BadRequestException('Intent has no items');
     }
 
-    if (!['catalog_purchase', 'course_enrollment'].includes(intent.intent_type)) {
+    if (
+      !['catalog_purchase', 'course_enrollment'].includes(intent.intent_type)
+    ) {
       intent.status = 'submitted';
       intent.summary_json = {
         ...(intent.summary_json ?? {}),
@@ -645,15 +696,21 @@ export class IntentsService {
     user: { tenant_id: string; partner_id: string },
     dto: SelectIntentPaymentMethodDto,
   ) {
-    const intent = await this.intentsRepo.findOne({ where: { id: intentId, tenant_id: user.tenant_id } });
+    const intent = await this.intentsRepo.findOne({
+      where: { id: intentId, tenant_id: user.tenant_id },
+    });
     if (!intent || intent.buyer_partner_id !== user.partner_id) {
       throw new ForbiddenException('Access denied');
     }
     if (!['service_request', 'quote_request'].includes(intent.intent_type)) {
-      throw new BadRequestException('This intent does not support store payment methods');
+      throw new BadRequestException(
+        'This intent does not support store payment methods',
+      );
     }
     if (intent.status === 'draft' || intent.status === 'cancelled') {
-      throw new BadRequestException('Submit the request before selecting a payment method');
+      throw new BadRequestException(
+        'Submit the request before selecting a payment method',
+      );
     }
 
     const method = await this.paymentMethodsRepo.findOne({
@@ -679,7 +736,9 @@ export class IntentsService {
     user: { tenant_id: string; partner_id: string },
     dto: SubmitIntentPaymentProofDto,
   ) {
-    const intent = await this.intentsRepo.findOne({ where: { id: intentId, tenant_id: user.tenant_id } });
+    const intent = await this.intentsRepo.findOne({
+      where: { id: intentId, tenant_id: user.tenant_id },
+    });
     if (!intent || intent.buyer_partner_id !== user.partner_id) {
       throw new ForbiddenException('Access denied');
     }
@@ -701,7 +760,10 @@ export class IntentsService {
     requestedStorePartnerId: string | undefined,
     status: string,
   ) {
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedStorePartnerId);
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedStorePartnerId,
+    );
     const intent = await this.intentsRepo.findOne({
       where: { id: intentId, tenant_id: user.tenant_id },
     });
@@ -715,12 +777,19 @@ export class IntentsService {
       throw new BadRequestException('Invalid intent status transition');
     }
 
-    if (intent.intent_type !== 'service_request' && intent.intent_type !== 'quote_request') {
-      throw new BadRequestException('Only service or quote requests can be updated from seller panel');
+    if (
+      intent.intent_type !== 'service_request' &&
+      intent.intent_type !== 'quote_request'
+    ) {
+      throw new BadRequestException(
+        'Only service or quote requests can be updated from seller panel',
+      );
     }
 
     if (status === 'confirmed' && intent.payment_status !== 'paid') {
-      throw new BadRequestException('A paid request is required before confirming this service');
+      throw new BadRequestException(
+        'A paid request is required before confirming this service',
+      );
     }
 
     intent.status = status;
@@ -739,13 +808,20 @@ export class IntentsService {
     requestedStorePartnerId: string | undefined,
     dto: UpdateIntentPaymentStatusDto,
   ) {
-    const managedPartnerId = await this.resolveManagedPartnerId(user, requestedStorePartnerId);
-    const intent = await this.intentsRepo.findOne({ where: { id: intentId, tenant_id: user.tenant_id } });
+    const managedPartnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedStorePartnerId,
+    );
+    const intent = await this.intentsRepo.findOne({
+      where: { id: intentId, tenant_id: user.tenant_id },
+    });
     if (!intent || intent.store_partner_id !== managedPartnerId) {
       throw new ForbiddenException('Access denied');
     }
     if (!['service_request', 'quote_request'].includes(intent.intent_type)) {
-      throw new BadRequestException('This intent does not support payment validation');
+      throw new BadRequestException(
+        'This intent does not support payment validation',
+      );
     }
 
     intent.payment_status = dto.payment_status;

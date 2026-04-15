@@ -24,7 +24,9 @@ export class AddOrderPaymentFields1776000005000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`sale_order\` DROP FOREIGN KEY \`FK_sale_order_payment_method\``);
+    await queryRunner.query(
+      `ALTER TABLE \`sale_order\` DROP FOREIGN KEY \`FK_sale_order_payment_method\``,
+    );
     await queryRunner.query(
       `ALTER TABLE \`sale_order\`
         DROP COLUMN \`validated_at\`,

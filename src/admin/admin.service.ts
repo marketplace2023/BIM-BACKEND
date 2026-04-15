@@ -19,13 +19,16 @@ const SELLER_ENTITY_TYPES = [
 ] as const;
 
 function resolveUserFurStatus(user: ResUser) {
-  const security = (user.security_json ?? {}) as Record<string, any>;
+  const security = user.security_json ?? {};
   return security.fur_u?.status ?? mapLegacyStatusToFurStatus(user.kyc_status);
 }
 
 function resolveStoreFurStatus(partner: ResPartner) {
-  const attrs = (partner.attributes_json ?? {}) as Record<string, any>;
-  return attrs.fur_t?.status ?? mapLegacyStatusToFurStatus(partner.x_verification_status);
+  const attrs = partner.attributes_json ?? {};
+  return (
+    attrs.fur_t?.status ??
+    mapLegacyStatusToFurStatus(partner.x_verification_status)
+  );
 }
 
 @Injectable()
@@ -56,7 +59,8 @@ export class AdminService {
     });
 
     const average = ratings.length
-      ? ratings.reduce((sum, item) => sum + Number(item.rating), 0) / ratings.length
+      ? ratings.reduce((sum, item) => sum + Number(item.rating), 0) /
+        ratings.length
       : 0;
 
     await this.productsRepo.update(productId, {
@@ -65,35 +69,39 @@ export class AdminService {
   }
 
   async getDashboard(tenantId: string) {
-    const [storesRegistered, coursesRegistered, contractsCompleted, productsCreated] =
-      await Promise.all([
-        this.partnersRepo.count({
-          where: {
-            tenant_id: tenantId,
-            entity_type: In([...SELLER_ENTITY_TYPES]),
-            deleted_at: IsNull(),
-          },
-        }),
-        this.coursesRepo
-          .createQueryBuilder('course')
-          .innerJoin('course.product_template', 'product')
-          .where('product.tenant_id = :tenantId', { tenantId })
-          .andWhere('product.deleted_at IS NULL')
-          .getCount(),
-        this.ordersRepo.count({
-          where: {
-            tenant_id: tenantId,
-            status: Not('draft'),
-          },
-        }),
-        this.productsRepo.count({
-          where: {
-            tenant_id: tenantId,
-            listing_type: 'product',
-            deleted_at: IsNull(),
-          },
-        }),
-      ]);
+    const [
+      storesRegistered,
+      coursesRegistered,
+      contractsCompleted,
+      productsCreated,
+    ] = await Promise.all([
+      this.partnersRepo.count({
+        where: {
+          tenant_id: tenantId,
+          entity_type: In([...SELLER_ENTITY_TYPES]),
+          deleted_at: IsNull(),
+        },
+      }),
+      this.coursesRepo
+        .createQueryBuilder('course')
+        .innerJoin('course.product_template', 'product')
+        .where('product.tenant_id = :tenantId', { tenantId })
+        .andWhere('product.deleted_at IS NULL')
+        .getCount(),
+      this.ordersRepo.count({
+        where: {
+          tenant_id: tenantId,
+          status: Not('draft'),
+        },
+      }),
+      this.productsRepo.count({
+        where: {
+          tenant_id: tenantId,
+          listing_type: 'product',
+          deleted_at: IsNull(),
+        },
+      }),
+    ]);
 
     const [recentStores, recentContracts] = await Promise.all([
       this.partnersRepo.find({
@@ -146,11 +154,16 @@ export class AdminService {
         .createQueryBuilder('user')
         .innerJoinAndSelect('user.partner', 'partner')
         .where('user.tenant_id = :tenantId', { tenantId })
-        .andWhere('partner.entity_type = :entityType', { entityType: 'customer' })
-        .andWhere('partner.deleted_at IS NULL')
-        .andWhere('(partner.x_partner_role IS NULL OR partner.x_partner_role != :adminRole)', {
-          adminRole: 'admin',
+        .andWhere('partner.entity_type = :entityType', {
+          entityType: 'customer',
         })
+        .andWhere('partner.deleted_at IS NULL')
+        .andWhere(
+          '(partner.x_partner_role IS NULL OR partner.x_partner_role != :adminRole)',
+          {
+            adminRole: 'admin',
+          },
+        )
         .orderBy('user.created_at', 'DESC')
         .getMany(),
       this.partnersRepo.find({
@@ -211,7 +224,8 @@ export class AdminService {
           id: partner.id,
           user_id: owner?.id ?? null,
           email: partner.email ?? owner?.email ?? '',
-          username: owner?.username ?? partner.email?.split('@')[0] ?? partner.name,
+          username:
+            owner?.username ?? partner.email?.split('@')[0] ?? partner.name,
           is_active: owner?.is_active ?? 1,
           fur_user_status: owner ? resolveUserFurStatus(owner) : undefined,
           created_at: partner.created_at,
@@ -282,7 +296,10 @@ export class AdminService {
       countQb.andWhere('rating.status = :status', { status: filters.status });
     }
 
-    const [rows, total] = await Promise.all([qb.getRawMany(), countQb.getCount()]);
+    const [rows, total] = await Promise.all([
+      qb.getRawMany(),
+      countQb.getCount(),
+    ]);
 
     return {
       data: rows.map((row) => ({
@@ -297,28 +314,36 @@ export class AdminService {
         reviewer: row.reviewer_id
           ? {
               id: String(row.reviewer_id),
-              username: row.reviewer_username ? String(row.reviewer_username) : 'Usuario',
+              username: row.reviewer_username
+                ? String(row.reviewer_username)
+                : 'Usuario',
               email: row.reviewer_email ? String(row.reviewer_email) : null,
             }
           : null,
         replier: row.replier_id
           ? {
               id: String(row.replier_id),
-              username: row.replier_username ? String(row.replier_username) : 'Tienda',
+              username: row.replier_username
+                ? String(row.replier_username)
+                : 'Tienda',
             }
           : null,
         product: row.product_id
           ? {
               id: String(row.product_id),
               name: row.product_name ? String(row.product_name) : 'Item',
-              vertical_type: row.product_vertical_type ? String(row.product_vertical_type) : null,
+              vertical_type: row.product_vertical_type
+                ? String(row.product_vertical_type)
+                : null,
             }
           : null,
         partner: row.partner_id
           ? {
               id: String(row.partner_id),
               name: row.partner_name ? String(row.partner_name) : 'Tienda',
-              entity_type: row.partner_entity_type ? String(row.partner_entity_type) : null,
+              entity_type: row.partner_entity_type
+                ? String(row.partner_entity_type)
+                : null,
             }
           : null,
       })),
@@ -403,7 +428,10 @@ export class AdminService {
         store_name: intent.store_partner?.name ?? 'Tienda',
         payment_method_title: intent.payment_method?.title ?? null,
       })),
-    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    ].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
 
     return {
       data,

@@ -32,7 +32,9 @@ export class BimAdminController {
   @UseGuards(BimJwtGuard)
   @Get('auth/me')
   async me(@Request() req: any) {
-    const user = await this.service.findCurrentUser(req.user.sub ?? req.user.id);
+    const user = await this.service.findCurrentUser(
+      req.user.sub ?? req.user.id,
+    );
     return {
       ...user,
       tenant_id: req.user.tenant_id,

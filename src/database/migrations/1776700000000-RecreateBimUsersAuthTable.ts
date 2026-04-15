@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class RecreateBimUsersAuthTable1776700000000
-  implements MigrationInterface
-{
+export class RecreateBimUsersAuthTable1776700000000 implements MigrationInterface {
   name = 'RecreateBimUsersAuthTable1776700000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

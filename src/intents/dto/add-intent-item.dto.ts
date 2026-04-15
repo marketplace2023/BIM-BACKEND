@@ -22,7 +22,12 @@ export class AddIntentItemDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['catalog_purchase', 'course_enrollment', 'service_request', 'quote_request'])
+  @IsIn([
+    'catalog_purchase',
+    'course_enrollment',
+    'service_request',
+    'quote_request',
+  ])
   intent_type?: string;
 
   @IsObject()

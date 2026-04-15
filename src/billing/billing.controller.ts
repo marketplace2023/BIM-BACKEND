@@ -27,7 +27,8 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   @Get('my-subscription')
   getMySubscription(
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId?: string,
   ) {
     return this.billingService.getMySubscription(user, storeContextId);
@@ -36,7 +37,8 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   @Post('create-checkout-intent')
   createCheckoutIntent(
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() dto: CreateBillingCheckoutIntentDto,
   ) {
@@ -46,7 +48,8 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   @Post('payments/:id/sync')
   syncPayment(
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Param('id') paymentId: string,
   ) {
@@ -59,6 +62,10 @@ export class BillingController {
     @Headers('stripe-signature') signature?: string,
     @Body() payload?: any,
   ) {
-    return this.billingService.handleStripeWebhook(req.rawBody, signature, payload);
+    return this.billingService.handleStripeWebhook(
+      req.rawBody,
+      signature,
+      payload,
+    );
   }
 }

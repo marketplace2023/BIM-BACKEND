@@ -1,4 +1,10 @@
-import { IsArray, IsBoolean, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class UpsertStoreGbpDto {
   @IsString()

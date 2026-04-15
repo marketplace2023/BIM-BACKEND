@@ -25,19 +25,26 @@ export class ReconsideracionesService {
     private readonly partidaRepo: Repository<BimPartida>,
   ) {}
 
-  async create(dto: CreateReconsideracionDto, userId: string, tenantId: string) {
+  async create(
+    dto: CreateReconsideracionDto,
+    userId: string,
+    tenantId: string,
+  ) {
     const obra = await this.findTenantObra(dto.obra_id, tenantId);
     const partida = await this.findTenantPartida(dto.partida_id, tenantId);
 
     if (partida.obra_id !== obra.id) {
-      throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+      throw new BadRequestException(
+        'La partida no pertenece a la obra seleccionada',
+      );
     }
 
     const original = Number.parseFloat(partida.cantidad ?? '0') || 0;
     const variation = Number.parseFloat(dto.cantidad_variacion ?? '0') || 0;
     const unitPrice = Number.parseFloat(partida.precio_unitario ?? '0') || 0;
 
-    const signedVariation = dto.tipo === 'disminucion' ? variation * -1 : variation;
+    const signedVariation =
+      dto.tipo === 'disminucion' ? variation * -1 : variation;
     const newQuantity = original + signedVariation;
 
     if (newQuantity < 0) {
@@ -80,7 +87,8 @@ export class ReconsideracionesService {
       relations: ['partida', 'obra', 'creador', 'aprobador'],
     });
 
-    if (!rec) throw new NotFoundException(`Reconsideración #${id} no encontrada`);
+    if (!rec)
+      throw new NotFoundException(`Reconsideración #${id} no encontrada`);
     return rec;
   }
 
@@ -88,7 +96,9 @@ export class ReconsideracionesService {
     const rec = await this.findOne(id, tenantId);
 
     if (rec.status !== 'borrador') {
-      throw new BadRequestException('Solo puedes editar reconsideraciones en borrador');
+      throw new BadRequestException(
+        'Solo puedes editar reconsideraciones en borrador',
+      );
     }
 
     const obraId = dto.obra_id ?? rec.obra_id;
@@ -98,14 +108,20 @@ export class ReconsideracionesService {
     const partida = await this.findTenantPartida(partidaId, tenantId);
 
     if (partida.obra_id !== obra.id) {
-      throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+      throw new BadRequestException(
+        'La partida no pertenece a la obra seleccionada',
+      );
     }
 
     const original = Number.parseFloat(partida.cantidad ?? '0') || 0;
-    const variation = Number.parseFloat(dto.cantidad_variacion ?? rec.cantidad_variacion ?? '0') || 0;
+    const variation =
+      Number.parseFloat(
+        dto.cantidad_variacion ?? rec.cantidad_variacion ?? '0',
+      ) || 0;
     const tipo = dto.tipo ?? rec.tipo;
     const unitPrice = Number.parseFloat(partida.precio_unitario ?? '0') || 0;
-    const signedVariation = tipo === 'disminucion' ? Math.abs(variation) * -1 : Math.abs(variation);
+    const signedVariation =
+      tipo === 'disminucion' ? Math.abs(variation) * -1 : Math.abs(variation);
     const newQuantity = original + signedVariation;
 
     if (newQuantity < 0) {
@@ -147,7 +163,9 @@ export class ReconsideracionesService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }
@@ -156,7 +174,11 @@ export class ReconsideracionesService {
     const partida = await this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
-      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = capitulo.presupuesto_id',
+      )
       .innerJoin(BimObra, 'obra', 'obra.id = presupuesto.obra_id')
       .where('partida.id = :id', { id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
@@ -166,7 +188,12 @@ export class ReconsideracionesService {
         'partida.precio_unitario AS precio_unitario',
         'obra.id AS obra_id',
       ])
-      .getRawOne<{ id: string; cantidad: string; precio_unitario: string; obra_id: string }>();
+      .getRawOne<{
+        id: string;
+        cantidad: string;
+        precio_unitario: string;
+        obra_id: string;
+      }>();
 
     if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
     return partida;

@@ -29,7 +29,9 @@ export class MedicionesService {
     const partida = await this.findTenantPartida(dto.partida_id, tenantId);
 
     if (partida.obra_id !== obra.id) {
-      throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+      throw new BadRequestException(
+        'La partida no pertenece a la obra seleccionada',
+      );
     }
 
     const medicion = await this.medicionRepo.save(
@@ -90,10 +92,14 @@ export class MedicionesService {
     if (dto.partida_id && dto.partida_id !== medicion.partida_id) {
       const partida = await this.findTenantPartida(dto.partida_id, tenantId);
       if (dto.obra_id && partida.obra_id !== dto.obra_id) {
-        throw new BadRequestException('La partida no pertenece a la obra seleccionada');
+        throw new BadRequestException(
+          'La partida no pertenece a la obra seleccionada',
+        );
       }
       if (!dto.obra_id && partida.obra_id !== medicion.obra_id) {
-        throw new BadRequestException('La partida no pertenece a la obra actual');
+        throw new BadRequestException(
+          'La partida no pertenece a la obra actual',
+        );
       }
       medicion.partida_id = dto.partida_id;
     }
@@ -119,7 +125,9 @@ export class MedicionesService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }
@@ -128,7 +136,11 @@ export class MedicionesService {
     const partida = await this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
-      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .innerJoin(
+        BimPresupuesto,
+        'presupuesto',
+        'presupuesto.id = capitulo.presupuesto_id',
+      )
       .innerJoin(BimObra, 'obra', 'obra.id = presupuesto.obra_id')
       .where('partida.id = :id', { id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
@@ -143,7 +155,10 @@ export class MedicionesService {
     return partida;
   }
 
-  private async recalculatePartidaSequence(partidaId: string, tenantId: string) {
+  private async recalculatePartidaSequence(
+    partidaId: string,
+    tenantId: string,
+  ) {
     const partida = await this.findTenantPartida(partidaId, tenantId);
     const mediciones = await this.medicionRepo.find({
       where: { partida_id: partidaId, tenant_id: tenantId },
@@ -161,7 +176,9 @@ export class MedicionesService {
       medicion.cantidad_anterior = anterior.toFixed(4);
       medicion.cantidad_acumulada = acumulada.toFixed(4);
       medicion.porcentaje_avance =
-        totalPartida > 0 ? ((acumulada / totalPartida) * 100).toFixed(2) : '0.00';
+        totalPartida > 0
+          ? ((acumulada / totalPartida) * 100).toFixed(2)
+          : '0.00';
 
       await this.medicionRepo.save(medicion);
     }

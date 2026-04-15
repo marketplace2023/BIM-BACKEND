@@ -8,7 +8,10 @@ import { ComputosController } from './computos.controller';
 import { ComputosService } from './computos.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BimComputo, BimObra, BimPartida]), BimAdminModule],
+  imports: [
+    TypeOrmModule.forFeature([BimComputo, BimObra, BimPartida]),
+    BimAdminModule,
+  ],
   controllers: [ComputosController],
   providers: [ComputosService],
   exports: [ComputosService],

@@ -76,7 +76,10 @@ export class CategoriesController {
       }),
       fileFilter: (_req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        cb(isImage ? null : new Error('Only image uploads are allowed'), isImage);
+        cb(
+          isImage ? null : new Error('Only image uploads are allowed'),
+          isImage,
+        );
       },
       limits: {
         fileSize: 5 * 1024 * 1024,

@@ -8,7 +8,10 @@ import { ReconsideracionesController } from './reconsideraciones.controller';
 import { ReconsideracionesService } from './reconsideraciones.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BimReconsideracion, BimObra, BimPartida]), BimAdminModule],
+  imports: [
+    TypeOrmModule.forFeature([BimReconsideracion, BimObra, BimPartida]),
+    BimAdminModule,
+  ],
   controllers: [ReconsideracionesController],
   providers: [ReconsideracionesService],
   exports: [ReconsideracionesService],

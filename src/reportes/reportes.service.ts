@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import PDFDocument = require('pdfkit');
 import { Repository } from 'typeorm';
@@ -52,7 +56,9 @@ export class ReportesService {
     obraId: string,
     presupuestoId?: string,
   ) {
-    const obra = await this.obraRepo.findOne({ where: { id: obraId, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id: obraId, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException('Obra no encontrada');
 
     const presupuesto = presupuestoId
@@ -92,16 +98,32 @@ export class ReportesService {
 
     switch (type) {
       case 'presupuesto':
-        await this.renderPresupuesto(doc, tenantId, presupuesto!.id, presupuesto!.moneda);
+        await this.renderPresupuesto(
+          doc,
+          tenantId,
+          presupuesto!.id,
+          presupuesto!.moneda,
+        );
         break;
       case 'mediciones':
         await this.renderMediciones(doc, tenantId, obraId);
         break;
       case 'valuaciones':
-        await this.renderValuaciones(doc, tenantId, obraId, presupuesto!.moneda);
+        await this.renderValuaciones(
+          doc,
+          tenantId,
+          obraId,
+          presupuesto!.moneda,
+        );
         break;
       case 'cierre':
-        await this.renderCierre(doc, tenantId, obraId, presupuesto!.id, presupuesto!.moneda);
+        await this.renderCierre(
+          doc,
+          tenantId,
+          obraId,
+          presupuesto!.id,
+          presupuesto!.moneda,
+        );
         break;
       case 'insumos':
         await this.renderInsumos(doc, tenantId);
@@ -144,7 +166,8 @@ export class ReportesService {
   }
 
   private formatCurrency(value: number | string, currency = 'USD') {
-    const parsed = typeof value === 'number' ? value : Number.parseFloat(value || '0');
+    const parsed =
+      typeof value === 'number' ? value : Number.parseFloat(value || '0');
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
       currency,
@@ -180,7 +203,11 @@ export class ReportesService {
     }
   }
 
-  private async renderMediciones(doc: PDFKit.PDFDocument, tenantId: string, obraId: string) {
+  private async renderMediciones(
+    doc: PDFKit.PDFDocument,
+    tenantId: string,
+    obraId: string,
+  ) {
     const mediciones = await this.medicionRepo.find({
       where: { tenant_id: tenantId, obra_id: obraId },
       relations: ['partida'],
@@ -287,7 +314,8 @@ export class ReportesService {
     for (const computo of computos) {
       computosByPartida.set(
         computo.partida_id,
-        (computosByPartida.get(computo.partida_id) ?? 0) + Number.parseFloat(computo.resultado ?? '0'),
+        (computosByPartida.get(computo.partida_id) ?? 0) +
+          Number.parseFloat(computo.resultado ?? '0'),
       );
     }
 
@@ -295,21 +323,26 @@ export class ReportesService {
       const current = medicionesByPartida.get(medicion.partida_id) ?? 0;
       medicionesByPartida.set(
         medicion.partida_id,
-        Math.max(current, Number.parseFloat(medicion.cantidad_acumulada ?? '0')),
+        Math.max(
+          current,
+          Number.parseFloat(medicion.cantidad_acumulada ?? '0'),
+        ),
       );
     }
 
     for (const linea of lineas) {
       valuadoByPartida.set(
         linea.partida_id,
-        (valuadoByPartida.get(linea.partida_id) ?? 0) + Number.parseFloat(linea.importe_actual ?? '0'),
+        (valuadoByPartida.get(linea.partida_id) ?? 0) +
+          Number.parseFloat(linea.importe_actual ?? '0'),
       );
     }
 
     return partidas.map((partida) => {
       const capitulo = capitulosById.get(partida.capitulo_id);
       return {
-        capitulo: `${capitulo?.codigo ?? ''} · ${capitulo?.nombre ?? ''}`.trim(),
+        capitulo:
+          `${capitulo?.codigo ?? ''} · ${capitulo?.nombre ?? ''}`.trim(),
         partida: `${partida.codigo} · ${partida.descripcion}`,
         unidad: partida.unidad,
         presupuestoCantidad: Number.parseFloat(partida.cantidad ?? '0'),

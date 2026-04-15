@@ -42,7 +42,11 @@ export class ObrasController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateObraDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateObraDto,
+    @Request() req: any,
+  ) {
     return this.obrasService.update(id, req.user.tenant_id, dto);
   }
 

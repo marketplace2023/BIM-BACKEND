@@ -14,7 +14,12 @@ export class FurController {
   @Get('workspace')
   getWorkspace(
     @CurrentUser()
-    user: { id: string; partner_id: string; role?: string; roles?: string[] },
+    user: {
+      id: string;
+      partner_id: string;
+      role?: string;
+      roles?: string[];
+    },
   ) {
     return this.furService.getWorkspace(user);
   }

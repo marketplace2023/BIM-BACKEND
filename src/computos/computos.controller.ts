@@ -44,7 +44,11 @@ export class ComputosController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateComputoDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateComputoDto,
+    @Request() req: any,
+  ) {
     return this.computosService.update(id, req.user.tenant_id, dto);
   }
 

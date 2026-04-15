@@ -42,7 +42,11 @@ export class PreciosUnitariosController {
   }
 
   @Patch('recursos/:id')
-  updateRecurso(@Param('id') id: string, @Body() dto: UpdateRecursoDto, @Request() req: any) {
+  updateRecurso(
+    @Param('id') id: string,
+    @Body() dto: UpdateRecursoDto,
+    @Request() req: any,
+  ) {
     return this.service.updateRecurso(id, req.user.tenant_id, dto);
   }
 
@@ -69,7 +73,11 @@ export class PreciosUnitariosController {
   }
 
   @Patch(':id')
-  updatePU(@Param('id') id: string, @Body() dto: UpdatePrecioUnitarioDto, @Request() req: any) {
+  updatePU(
+    @Param('id') id: string,
+    @Body() dto: UpdatePrecioUnitarioDto,
+    @Request() req: any,
+  ) {
     return this.service.updatePU(id, req.user.tenant_id, dto);
   }
 

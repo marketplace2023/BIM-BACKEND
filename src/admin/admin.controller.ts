@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminRoleGuard } from '../common/guards/admin-role.guard';
@@ -31,7 +39,11 @@ export class AdminController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.adminService.getRatings(user.tenant_id, { status, page, limit });
+    return this.adminService.getRatings(user.tenant_id, {
+      status,
+      page,
+      limit,
+    });
   }
 
   @Patch('ratings/:id/status')
@@ -40,7 +52,11 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: { status: string },
   ) {
-    return this.adminService.updateRatingStatus(user.tenant_id, id, body.status);
+    return this.adminService.updateRatingStatus(
+      user.tenant_id,
+      id,
+      body.status,
+    );
   }
 
   @Get('billing/payments')
@@ -50,7 +66,11 @@ export class AdminController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.billingService.getAdminPayments(user.tenant_id, { status, page, limit });
+    return this.billingService.getAdminPayments(user.tenant_id, {
+      status,
+      page,
+      limit,
+    });
   }
 
   @Patch('billing/payments/:id/status')

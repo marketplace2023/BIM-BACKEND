@@ -1,8 +1,17 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
+import { ResUser } from '../database/entities/identity/res-user.entity';
+import { UserRole } from '../database/entities/identity/user-role.entity';
+import { UserRoleAssignment } from '../database/entities/identity/user-role-assignment.entity';
 import { ContractorProfile } from '../database/entities/verticals/contractor-profile.entity';
 import { EducationProviderProfile } from '../database/entities/verticals/education-provider-profile.entity';
 import { HardwareStoreProfile } from '../database/entities/verticals/hardware-store-profile.entity';
@@ -18,6 +27,10 @@ export class StoresService {
   constructor(
     @InjectRepository(Tenant) private tenantsRepo: Repository<Tenant>,
     @InjectRepository(ResPartner) private partnersRepo: Repository<ResPartner>,
+    @InjectRepository(ResUser) private usersRepo: Repository<ResUser>,
+    @InjectRepository(UserRole) private rolesRepo: Repository<UserRole>,
+    @InjectRepository(UserRoleAssignment)
+    private roleAssignmentsRepo: Repository<UserRoleAssignment>,
     @InjectRepository(ContractorProfile)
     private contractorRepo: Repository<ContractorProfile>,
     @InjectRepository(EducationProviderProfile)
@@ -57,7 +70,11 @@ export class StoresService {
     }
 
     const basePartner = await this.partnersRepo.findOne({
-      where: { id: user.partner_id, tenant_id: user.tenant_id, deleted_at: IsNull() },
+      where: {
+        id: user.partner_id,
+        tenant_id: user.tenant_id,
+        deleted_at: IsNull(),
+      },
     });
 
     const effectiveEmail =
@@ -103,7 +120,7 @@ export class StoresService {
         attributes_json: {
           ...(dto.attributes_json ?? {}),
           fur_t: {
-            ...(((dto.attributes_json ?? {}) as Record<string, any>).fur_t ?? {}),
+            ...((dto.attributes_json ?? {}).fur_t ?? {}),
             status: furStatus,
             updated_at: new Date().toISOString(),
           },
@@ -118,19 +135,81 @@ export class StoresService {
   async createPublicOnboarding(dto: CreateStoreDto) {
     const tenantId = await this.resolvePublicTenantId();
 
-    return this.create(tenantId, {
+    if (!dto.email || !dto.password) {
+      throw new ConflictException(
+        'El onboarding publico debe crear tambien las credenciales de acceso.',
+      );
+    }
+
+    const normalizedEmail = dto.email.trim().toLowerCase();
+    const normalizedUsername =
+      dto.username?.trim() || normalizedEmail.split('@')[0] || dto.name.trim();
+
+    const existingEmail = await this.usersRepo.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (existingEmail) {
+      throw new ConflictException('El correo ya esta registrado');
+    }
+
+    const existingUsername = await this.usersRepo.findOne({
+      where: { username: normalizedUsername },
+    });
+    if (existingUsername) {
+      throw new ConflictException('El nombre de usuario ya esta registrado');
+    }
+
+    const store = await this.create(tenantId, {
       ...dto,
+      email: normalizedEmail,
+      username: normalizedUsername,
       x_verification_status: 'draft',
       attributes_json: {
         ...(dto.attributes_json ?? {}),
         fur_t: {
-          ...(((dto.attributes_json ?? {}) as Record<string, any>).fur_t ?? {}),
+          ...((dto.attributes_json ?? {}).fur_t ?? {}),
           status: 'draft',
           source: 'public_onboarding',
           updated_at: new Date().toISOString(),
         },
       },
     });
+
+    const role = await this.rolesRepo.findOne({ where: { code: 'store' } });
+    if (!role) {
+      throw new ConflictException('Role store is not configured');
+    }
+
+    const user = await this.usersRepo.save(
+      this.usersRepo.create({
+        tenant_id: tenantId,
+        partner_id: store.id,
+        username: normalizedUsername,
+        email: normalizedEmail,
+        password_hash: await bcrypt.hash(dto.password, 12),
+        is_active: 1,
+        is_email_verified: 1,
+        kyc_status: 'draft',
+        security_json: {
+          fur_u: {
+            status: 'draft',
+            role: 'store',
+            source: 'public_onboarding',
+            created_at: new Date().toISOString(),
+          },
+        },
+      }),
+    );
+
+    await this.roleAssignmentsRepo.save(
+      this.roleAssignmentsRepo.create({
+        user_id: user.id,
+        role_id: role.id,
+        partner_id: store.id,
+      }),
+    );
+
+    return store;
   }
 
   private async _createProfile(partnerId: string, dto: CreateStoreDto) {
@@ -307,8 +386,8 @@ export class StoresService {
   async findPublicOne(id: string) {
     const partner = await this.findOne(id);
     const status = mapLegacyStatusToFurStatus(
-      ((partner.attributes_json as Record<string, any> | null)?.fur_t
-        ?.status as string | undefined) ?? partner.x_verification_status,
+      (partner.attributes_json?.fur_t?.status as string | undefined) ??
+        partner.x_verification_status,
     );
 
     if (status !== 'published') {
@@ -364,8 +443,12 @@ export class StoresService {
       base.attributes_json = {
         ...(base.attributes_json ?? partner.attributes_json ?? {}),
         fur_t: {
-          ...(((base.attributes_json ?? partner.attributes_json ?? {}) as Record<string, any>)
-            .fur_t ?? {}),
+          ...((
+            (base.attributes_json ?? partner.attributes_json ?? {}) as Record<
+              string,
+              any
+            >
+          ).fur_t ?? {}),
           status: dto.x_verification_status,
           updated_at: new Date().toISOString(),
         },
@@ -383,8 +466,14 @@ export class StoresService {
     user: { tenant_id: string; partner_id: string; email?: string },
     published: boolean,
   ) {
+    if (published) {
+      throw new ForbiddenException(
+        'La tienda solo puede ser aprobada y publicada por un administrador.',
+      );
+    }
+
     const partner = await this.resolveManagedStore(id, user);
-    const attributes = (partner.attributes_json ?? {}) as Record<string, any>;
+    const attributes = partner.attributes_json ?? {};
     const fur = (attributes.fur_t ?? {}) as Record<string, any>;
     const nextAttributes: Record<string, any> = {
       ...attributes,
@@ -401,6 +490,74 @@ export class StoresService {
     });
 
     return this.findOne(id);
+  }
+
+  async findPendingReviews(tenantId: string) {
+    const partners = await this.partnersRepo.find({
+      where: {
+        tenant_id: tenantId,
+        deleted_at: IsNull(),
+      },
+      order: { created_at: 'DESC' },
+    });
+
+    return partners
+      .filter((partner) => partner.entity_type !== 'customer')
+      .filter(
+        (partner) =>
+          mapLegacyStatusToFurStatus(
+            (partner.attributes_json?.fur_t?.status as string | undefined) ??
+              partner.x_verification_status,
+          ) === 'draft',
+      )
+      .map((partner) => ({
+        id: partner.id,
+        tenant_id: partner.tenant_id,
+        entity_type: partner.entity_type,
+        name: partner.name,
+        legal_name: partner.legal_name,
+        email: partner.email,
+        phone: partner.phone,
+        city: partner.city,
+        state: partner.state,
+        country: partner.country,
+        website: partner.website,
+        x_verification_status: partner.x_verification_status,
+        created_at: partner.created_at,
+        updated_at: partner.updated_at,
+        attributes_json: partner.attributes_json,
+      }));
+  }
+
+  async adminSetReviewStatus(
+    tenantId: string,
+    storeId: string,
+    status: 'published' | 'draft',
+  ) {
+    const partner = await this.partnersRepo.findOne({
+      where: { id: storeId, tenant_id: tenantId, deleted_at: IsNull() },
+    });
+
+    if (!partner) {
+      throw new NotFoundException('Store not found');
+    }
+
+    const attributes = partner.attributes_json ?? {};
+    const fur = (attributes.fur_t ?? {}) as Record<string, any>;
+
+    await this.partnersRepo.update(storeId, {
+      x_verification_status: status,
+      attributes_json: {
+        ...attributes,
+        fur_t: {
+          ...fur,
+          status,
+          updated_at: new Date().toISOString(),
+        },
+      } as any,
+    });
+
+    return this.findOne(storeId);
   }
 
   private async ensureProfileExists(partnerId: string, entityType: string) {

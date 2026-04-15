@@ -64,7 +64,10 @@ export class ProductsController {
       }),
       fileFilter: (_req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        cb(isImage ? null : new Error('Only image uploads are allowed'), isImage);
+        cb(
+          isImage ? null : new Error('Only image uploads are allowed'),
+          isImage,
+        );
       },
       limits: {
         files: 8,
@@ -73,7 +76,8 @@ export class ProductsController {
     }),
   )
   uploadImages(
-    @UploadedFiles() files: Array<{
+    @UploadedFiles()
+    files: Array<{
       filename: string;
       originalname: string;
       mimetype: string;
@@ -97,7 +101,8 @@ export class ProductsController {
   @Patch(':id/images')
   syncImages(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Body()
     dto: {
       images?: Array<{
@@ -106,8 +111,8 @@ export class ProductsController {
         originalName?: string;
         mimeType?: string;
         size?: number;
-      isCover?: boolean;
-      sortOrder?: number;
+        isCover?: boolean;
+        sortOrder?: number;
       }>;
     },
     @Headers('x-store-context') storeContextId?: string,
@@ -119,7 +124,8 @@ export class ProductsController {
   @UseGuards(BimJwtGuard)
   @Post()
   create(
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Body() dto: CreateProductDto,
     @Headers('x-store-context') storeContextId?: string,
   ) {
@@ -157,7 +163,8 @@ export class ProductsController {
   @UseGuards(BimJwtGuard)
   @Get('inventory/hardware')
   getHardwareInventory(
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Headers('x-store-context') storeContextId?: string,
   ) {
     return this.svc.getInventory(user, storeContextId);
@@ -180,7 +187,8 @@ export class ProductsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Body() dto: UpdateProductDto,
     @Headers('x-store-context') storeContextId?: string,
   ) {
@@ -192,7 +200,8 @@ export class ProductsController {
   @Delete(':id')
   remove(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Headers('x-store-context') storeContextId?: string,
   ) {
     return this.svc.remove(id, user, storeContextId);
@@ -203,7 +212,8 @@ export class ProductsController {
   @Patch(':id/publish')
   publish(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Headers('x-store-context') storeContextId?: string,
   ) {
     return this.svc.setPublished(id, user, true, storeContextId);
@@ -214,7 +224,8 @@ export class ProductsController {
   @Patch(':id/unpublish')
   unpublish(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; email?: string; tenant_id: string; partner_id: string },
+    @CurrentUser()
+    user: { id: string; email?: string; tenant_id: string; partner_id: string },
     @Headers('x-store-context') storeContextId?: string,
   ) {
     return this.svc.setPublished(id, user, false, storeContextId);

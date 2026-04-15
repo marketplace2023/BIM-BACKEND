@@ -10,7 +10,12 @@ import { PresupuestosController } from './presupuestos.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([BimPresupuesto, BimCapitulo, BimPartida, BimObra]),
+    TypeOrmModule.forFeature([
+      BimPresupuesto,
+      BimCapitulo,
+      BimPartida,
+      BimObra,
+    ]),
     BimAdminModule,
   ],
   controllers: [PresupuestosController],

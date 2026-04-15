@@ -39,7 +39,13 @@ export class RatingsController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.svc.findAll({ partner_id, product_tmpl_id, reviewer_user_id, page, limit });
+    return this.svc.findAll({
+      partner_id,
+      product_tmpl_id,
+      reviewer_user_id,
+      page,
+      limit,
+    });
   }
 
   /** GET /api/ratings/mine?page=1&limit=20 */
@@ -58,7 +64,8 @@ export class RatingsController {
   @Patch(':id/reply')
   reply(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { id: string; tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() dto: ReplyRatingDto,
   ) {

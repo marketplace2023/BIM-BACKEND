@@ -55,7 +55,11 @@ export class PresupuestosController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdatePresupuestoDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePresupuestoDto,
+    @Request() req: any,
+  ) {
     return this.presupuestosService.update(id, req.user.tenant_id, dto);
   }
 
@@ -66,6 +70,11 @@ export class PresupuestosController {
       req.user.platform_user_id ?? req.user.id,
       req.user.tenant_id,
     );
+  }
+
+  @Patch(':id/borrador')
+  devolverABorrador(@Param('id') id: string, @Request() req: any) {
+    return this.presupuestosService.devolverABorrador(id, req.user.tenant_id);
   }
 
   @Patch(':id/recalcular')
@@ -94,7 +103,11 @@ export class PresupuestosController {
   }
 
   @Patch('capitulos/:id')
-  updateCapitulo(@Param('id') id: string, @Body() dto: UpdateCapituloDto, @Request() req: any) {
+  updateCapitulo(
+    @Param('id') id: string,
+    @Body() dto: UpdateCapituloDto,
+    @Request() req: any,
+  ) {
     return this.presupuestosService.updateCapitulo(id, req.user.tenant_id, dto);
   }
 
@@ -111,11 +124,19 @@ export class PresupuestosController {
     @Body() dto: CreatePartidaDto,
     @Request() req: any,
   ) {
-    return this.presupuestosService.createPartida(capituloId, req.user.tenant_id, dto);
+    return this.presupuestosService.createPartida(
+      capituloId,
+      req.user.tenant_id,
+      dto,
+    );
   }
 
   @Patch('partidas/:id')
-  updatePartida(@Param('id') id: string, @Body() dto: UpdatePartidaDto, @Request() req: any) {
+  updatePartida(
+    @Param('id') id: string,
+    @Body() dto: UpdatePartidaDto,
+    @Request() req: any,
+  ) {
     return this.presupuestosService.updatePartida(id, req.user.tenant_id, dto);
   }
 

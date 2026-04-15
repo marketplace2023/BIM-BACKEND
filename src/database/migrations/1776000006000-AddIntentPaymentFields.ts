@@ -24,7 +24,9 @@ export class AddIntentPaymentFields1776000006000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_payment_method\``);
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_payment_method\``,
+    );
     await queryRunner.query(
       `ALTER TABLE \`commerce_intent\`
         DROP COLUMN \`validated_at\`,

@@ -59,13 +59,27 @@ export class AddCommerceIntents1776000002000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_variant\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_product\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_intent\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_order\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_store\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_buyer\``);
-    await queryRunner.query(`ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_tenant\``);
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_variant\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_product\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent_item\` DROP FOREIGN KEY \`FK_commerce_intent_item_intent\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_order\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_store\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_buyer\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`commerce_intent\` DROP FOREIGN KEY \`FK_commerce_intent_tenant\``,
+    );
     await queryRunner.query(`DROP TABLE \`commerce_intent_item\``);
     await queryRunner.query(`DROP TABLE \`commerce_intent\``);
   }

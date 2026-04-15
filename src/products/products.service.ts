@@ -42,11 +42,14 @@ export class ProductsService {
     @InjectRepository(SeoService) private seoSvcRepo: Repository<SeoService>,
   ) {}
 
-  private async resolveManagedPartnerId(user: {
-    tenant_id: string;
-    partner_id: string;
-    email?: string;
-  }, requestedPartnerId?: string) {
+  private async resolveManagedPartnerId(
+    user: {
+      tenant_id: string;
+      partner_id: string;
+      email?: string;
+    },
+    requestedPartnerId?: string,
+  ) {
     if (!requestedPartnerId || requestedPartnerId === user.partner_id) {
       return user.partner_id;
     }
@@ -93,7 +96,10 @@ export class ProductsService {
     dto: CreateProductDto,
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const slug = uniqueSlug(dto.name);
     const tmpl = await this.tmplRepo.save(
       this.tmplRepo.create({
@@ -170,7 +176,10 @@ export class ProductsService {
 
   private async _syncImagesFromAttributes(
     productId: string,
-    dto: Pick<CreateProductDto | UpdateProductDto, 'cover_image_url' | 'x_attributes_json'>,
+    dto: Pick<
+      CreateProductDto | UpdateProductDto,
+      'cover_image_url' | 'x_attributes_json'
+    >,
   ) {
     const galleryImages = Array.isArray(dto.x_attributes_json?.gallery_images)
       ? dto.x_attributes_json?.gallery_images
@@ -379,7 +388,9 @@ export class ProductsService {
     const stockQuants =
       variantIds.length > 0
         ? await this.stockQuantRepo.find({
-            where: variantIds.map((variantId) => ({ product_variant_id: variantId })),
+            where: variantIds.map((variantId) => ({
+              product_variant_id: variantId,
+            })),
             order: { updated_at: 'DESC' },
           })
         : [];
@@ -402,7 +413,10 @@ export class ProductsService {
     dto: UpdateProductDto,
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const tmpl = await this.tmplRepo.findOne({
       where: { id, deleted_at: IsNull() },
     });
@@ -429,13 +443,17 @@ export class ProductsService {
     if (Object.keys(base).length) await this.tmplRepo.update(id, base);
 
     await this._updateExtension(id, tmpl.vertical_type, dto);
-    if (dto.cover_image_url !== undefined || dto.x_attributes_json !== undefined) {
+    if (
+      dto.cover_image_url !== undefined ||
+      dto.x_attributes_json !== undefined
+    ) {
       await this._syncImagesFromAttributes(id, {
-        cover_image_url: dto.cover_image_url ?? tmpl.cover_image_url ?? undefined,
+        cover_image_url:
+          dto.cover_image_url ?? tmpl.cover_image_url ?? undefined,
         x_attributes_json:
           dto.x_attributes_json !== undefined
             ? dto.x_attributes_json
-            : tmpl.x_attributes_json ?? undefined,
+            : (tmpl.x_attributes_json ?? undefined),
       });
     }
     return this.findOne(id);
@@ -545,7 +563,10 @@ export class ProductsService {
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const tmpl = await this.tmplRepo.findOne({ where: { id } });
     if (!tmpl) throw new NotFoundException('Product not found');
     if (tmpl.partner_id !== partnerId)
@@ -560,7 +581,10 @@ export class ProductsService {
     published: boolean,
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const tmpl = await this.tmplRepo.findOne({ where: { id } });
     if (!tmpl) throw new NotFoundException('Product not found');
     if (tmpl.partner_id !== partnerId)
@@ -583,8 +607,13 @@ export class ProductsService {
     }>,
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
-    const tmpl = await this.tmplRepo.findOne({ where: { id, deleted_at: IsNull() } });
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
+    const tmpl = await this.tmplRepo.findOne({
+      where: { id, deleted_at: IsNull() },
+    });
     if (!tmpl) throw new NotFoundException('Product not found');
     if (tmpl.partner_id !== partnerId)
       throw new ForbiddenException('Not your product');
@@ -601,7 +630,10 @@ export class ProductsService {
         is_cover: image.isCover ? 1 : 0,
       }));
 
-    if (normalized.length > 0 && !normalized.some((image) => image.is_cover === 1)) {
+    if (
+      normalized.length > 0 &&
+      !normalized.some((image) => image.is_cover === 1)
+    ) {
       normalized[0].is_cover = 1;
     }
 
@@ -634,7 +666,10 @@ export class ProductsService {
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId?: string,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const products = await this.tmplRepo.find({
       where: {
         tenant_id: user.tenant_id,
@@ -649,11 +684,16 @@ export class ProductsService {
     const variants =
       productIds.length > 0
         ? await this.variantRepo.find({
-            where: productIds.map((productId) => ({ product_tmpl_id: productId, active: 1 })),
+            where: productIds.map((productId) => ({
+              product_tmpl_id: productId,
+              active: 1,
+            })),
           })
         : [];
 
-    const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
+    const variantMap = new Map(
+      variants.map((variant) => [variant.id, variant]),
+    );
     const stockQuants =
       variants.length > 0
         ? await this.stockQuantRepo.find({
@@ -679,7 +719,9 @@ export class ProductsService {
     >();
 
     products.forEach((product) => {
-      const firstVariant = variants.find((variant) => variant.product_tmpl_id === product.id);
+      const firstVariant = variants.find(
+        (variant) => variant.product_tmpl_id === product.id,
+      );
       grouped.set(product.id, {
         product,
         variant: firstVariant,
@@ -708,7 +750,9 @@ export class ProductsService {
     const extensions =
       productIds.length > 0
         ? await this.hardwareProductRepo.find({
-            where: productIds.map((productId) => ({ product_tmpl_id: productId })),
+            where: productIds.map((productId) => ({
+              product_tmpl_id: productId,
+            })),
           })
         : [];
 
@@ -719,7 +763,9 @@ export class ProductsService {
     return Array.from(grouped.values()).map((entry) => {
       const product = entry.product;
       const extension = extensionMap.get(product.id);
-      const minimum = Number((product.x_attributes_json as any)?.minimum_stock ?? 5);
+      const minimum = Number(
+        (product.x_attributes_json as any)?.minimum_stock ?? 5,
+      );
       const categoryName = String(
         (product.x_attributes_json as any)?.category_name ?? 'Sin categoría',
       );

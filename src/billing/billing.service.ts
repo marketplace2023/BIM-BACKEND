@@ -19,23 +19,35 @@ const DEFAULT_MARKETPLACE_PLANS = [
   {
     code: 'listing-basic',
     name: 'Publicación Básica',
-    description: 'Activa una sede en el marketplace con ficha pública y acceso al panel.',
+    description:
+      'Activa una sede en el marketplace con ficha pública y acceso al panel.',
     billing_type: 'one_time',
     amount: '29.00',
     currency_code: 'USD',
     features_json: {
-      items: ['Ficha pública', 'Panel seller', 'Soporte inicial', 'Acceso a reseñas'],
+      items: [
+        'Ficha pública',
+        'Panel seller',
+        'Soporte inicial',
+        'Acceso a reseñas',
+      ],
     },
   },
   {
     code: 'listing-pro',
     name: 'Publicación Pro',
-    description: 'Incluye presencia destacada y prioridad de revisión administrativa.',
+    description:
+      'Incluye presencia destacada y prioridad de revisión administrativa.',
     billing_type: 'one_time',
     amount: '79.00',
     currency_code: 'USD',
     features_json: {
-      items: ['Ficha pública', 'Panel seller', 'Prioridad de revisión', 'Mayor visibilidad'],
+      items: [
+        'Ficha pública',
+        'Panel seller',
+        'Prioridad de revisión',
+        'Mayor visibilidad',
+      ],
     },
   },
 ];
@@ -67,14 +79,18 @@ export class BillingService {
 
   private requireStripe() {
     if (!this.stripe) {
-      throw new BadRequestException('Stripe is not configured in this environment');
+      throw new BadRequestException(
+        'Stripe is not configured in this environment',
+      );
     }
 
     return this.stripe;
   }
 
   private async ensureDefaultPlans(tenantId: string) {
-    const count = await this.plansRepo.count({ where: { tenant_id: tenantId } });
+    const count = await this.plansRepo.count({
+      where: { tenant_id: tenantId },
+    });
     if (count > 0) return;
 
     await this.plansRepo.save(
@@ -97,7 +113,11 @@ export class BillingService {
     }
 
     const partner = await this.partnersRepo.findOne({
-      where: { id: requestedPartnerId, tenant_id: user.tenant_id, deleted_at: IsNull() },
+      where: {
+        id: requestedPartnerId,
+        tenant_id: user.tenant_id,
+        deleted_at: IsNull(),
+      },
     });
 
     if (!partner) {
@@ -105,11 +125,21 @@ export class BillingService {
     }
 
     const basePartner = await this.partnersRepo.findOne({
-      where: { id: user.partner_id, tenant_id: user.tenant_id, deleted_at: IsNull() },
+      where: {
+        id: user.partner_id,
+        tenant_id: user.tenant_id,
+        deleted_at: IsNull(),
+      },
     });
 
-    const effectiveEmail = user.email?.trim().toLowerCase() ?? basePartner?.email?.trim().toLowerCase() ?? null;
-    const sameEmail = Boolean(effectiveEmail) && Boolean(partner.email) && partner.email!.trim().toLowerCase() === effectiveEmail;
+    const effectiveEmail =
+      user.email?.trim().toLowerCase() ??
+      basePartner?.email?.trim().toLowerCase() ??
+      null;
+    const sameEmail =
+      Boolean(effectiveEmail) &&
+      Boolean(partner.email) &&
+      partner.email!.trim().toLowerCase() === effectiveEmail;
 
     if (!sameEmail) {
       throw new ForbiddenException('Not allowed for this managed store');
@@ -120,20 +150,30 @@ export class BillingService {
 
   private async syncPartnerBillingState(
     partnerId: string,
-    input: { subscriptionStatus: string; paymentStatus?: string; planCode?: string },
+    input: {
+      subscriptionStatus: string;
+      paymentStatus?: string;
+      planCode?: string;
+    },
   ) {
-    const partner = await this.partnersRepo.findOne({ where: { id: partnerId } });
+    const partner = await this.partnersRepo.findOne({
+      where: { id: partnerId },
+    });
     if (!partner) return;
 
-    const attrs = (partner.attributes_json ?? {}) as Record<string, any>;
+    const attrs = partner.attributes_json ?? {};
     await this.partnersRepo.update(partnerId, {
       attributes_json: {
         ...attrs,
         marketplace_billing: {
           ...(attrs.marketplace_billing ?? {}),
           status: input.subscriptionStatus,
-          payment_status: input.paymentStatus ?? attrs.marketplace_billing?.payment_status ?? null,
-          plan_code: input.planCode ?? attrs.marketplace_billing?.plan_code ?? null,
+          payment_status:
+            input.paymentStatus ??
+            attrs.marketplace_billing?.payment_status ??
+            null,
+          plan_code:
+            input.planCode ?? attrs.marketplace_billing?.plan_code ?? null,
           updated_at: new Date().toISOString(),
         },
       },
@@ -156,8 +196,14 @@ export class BillingService {
     });
   }
 
-  async getMySubscription(user: { tenant_id: string; partner_id: string; email?: string }, requestedPartnerId?: string) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+  async getMySubscription(
+    user: { tenant_id: string; partner_id: string; email?: string },
+    requestedPartnerId?: string,
+  ) {
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     const subscription = await this.getActiveOrLatestSubscription(partnerId);
     const latestPayment = subscription
       ? await this.paymentsRepo.findOne({
@@ -169,7 +215,8 @@ export class BillingService {
     return {
       subscription,
       latest_payment: latestPayment,
-      publishable_key: this.configService.get<string>('STRIPE_PUBLISHABLE_KEY') ?? null,
+      publishable_key:
+        this.configService.get<string>('STRIPE_PUBLISHABLE_KEY') ?? null,
     };
   }
 
@@ -179,10 +226,15 @@ export class BillingService {
     dto: CreateBillingCheckoutIntentDto,
   ) {
     const stripe = this.requireStripe();
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     await this.ensureDefaultPlans(user.tenant_id);
 
-    const partner = await this.partnersRepo.findOne({ where: { id: partnerId } });
+    const partner = await this.partnersRepo.findOne({
+      where: { id: partnerId },
+    });
     if (!partner) {
       throw new NotFoundException('Store not found');
     }
@@ -195,7 +247,11 @@ export class BillingService {
     }
 
     let subscription = await this.getActiveOrLatestSubscription(partnerId);
-    if (!subscription || subscription.status === 'expired' || subscription.status === 'cancelled') {
+    if (
+      !subscription ||
+      subscription.status === 'expired' ||
+      subscription.status === 'cancelled'
+    ) {
       subscription = await this.subscriptionsRepo.save(
         this.subscriptionsRepo.create({
           tenant_id: user.tenant_id,
@@ -273,7 +329,8 @@ export class BillingService {
       subscription_id: subscription.id,
       payment_id: payment.id,
       client_secret: paymentIntent.client_secret,
-      publishable_key: this.configService.get<string>('STRIPE_PUBLISHABLE_KEY') ?? null,
+      publishable_key:
+        this.configService.get<string>('STRIPE_PUBLISHABLE_KEY') ?? null,
       amount: plan.amount,
       currency_code: plan.currency_code,
       plan,
@@ -286,12 +343,16 @@ export class BillingService {
       return { received: true };
     }
 
-    const payment = await this.paymentsRepo.findOne({ where: { id: paymentId } });
+    const payment = await this.paymentsRepo.findOne({
+      where: { id: paymentId },
+    });
     if (!payment) {
       return { received: true };
     }
 
-    const subscription = await this.subscriptionsRepo.findOne({ where: { id: payment.subscription_id } });
+    const subscription = await this.subscriptionsRepo.findOne({
+      where: { id: payment.subscription_id },
+    });
     if (!subscription) {
       return { received: true };
     }
@@ -353,13 +414,20 @@ export class BillingService {
     paymentId: string,
   ) {
     const stripe = this.requireStripe();
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
-    const payment = await this.paymentsRepo.findOne({ where: { id: paymentId, partner_id: partnerId } });
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
+    const payment = await this.paymentsRepo.findOne({
+      where: { id: paymentId, partner_id: partnerId },
+    });
     if (!payment) {
       throw new NotFoundException('Listing payment not found');
     }
     if (!payment.provider_ref) {
-      throw new BadRequestException('Listing payment is missing Stripe reference');
+      throw new BadRequestException(
+        'Listing payment is missing Stripe reference',
+      );
     }
 
     const intent = await stripe.paymentIntents.retrieve(payment.provider_ref);
@@ -367,17 +435,25 @@ export class BillingService {
     return this.getMySubscription(user, requestedPartnerId);
   }
 
-  async handleStripeWebhook(rawBody: Buffer | undefined, signature: string | undefined, payload: any) {
+  async handleStripeWebhook(
+    rawBody: Buffer | undefined,
+    signature: string | undefined,
+    payload: any,
+  ) {
     let event = payload as Stripe.Event;
 
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+    );
     if (webhookSecret && rawBody && signature) {
       const stripe = this.requireStripe();
       event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     }
 
     const type = event?.type;
-    const paymentIntent = event?.data?.object as Stripe.PaymentIntent | undefined;
+    const paymentIntent = event?.data?.object as
+      | Stripe.PaymentIntent
+      | undefined;
 
     if (!paymentIntent || paymentIntent.object !== 'payment_intent') {
       return { received: true };
@@ -394,7 +470,10 @@ export class BillingService {
     return { received: true };
   }
 
-  async getAdminPayments(tenantId: string, filters: { status?: string; page?: number; limit?: number }) {
+  async getAdminPayments(
+    tenantId: string,
+    filters: { status?: string; page?: number; limit?: number },
+  ) {
     const page = Number(filters.page ?? 1);
     const limit = Number(filters.limit ?? 20);
 
@@ -424,12 +503,16 @@ export class BillingService {
     status: 'validated' | 'rejected',
     notes?: string,
   ) {
-    const payment = await this.paymentsRepo.findOne({ where: { id: paymentId, tenant_id: tenantId } });
+    const payment = await this.paymentsRepo.findOne({
+      where: { id: paymentId, tenant_id: tenantId },
+    });
     if (!payment) {
       throw new NotFoundException('Listing payment not found');
     }
 
-    const subscription = await this.subscriptionsRepo.findOne({ where: { id: payment.subscription_id } });
+    const subscription = await this.subscriptionsRepo.findOne({
+      where: { id: payment.subscription_id },
+    });
     if (!subscription) {
       throw new NotFoundException('Listing subscription not found');
     }
@@ -448,7 +531,9 @@ export class BillingService {
       subscription.activated_at = new Date();
       subscription.notes = notes ?? null;
       await this.subscriptionsRepo.save(subscription);
-      const plan = await this.plansRepo.findOne({ where: { id: subscription.plan_id } });
+      const plan = await this.plansRepo.findOne({
+        where: { id: subscription.plan_id },
+      });
       await this.syncPartnerBillingState(payment.partner_id, {
         subscriptionStatus: 'active',
         paymentStatus: 'validated',
@@ -458,7 +543,9 @@ export class BillingService {
       subscription.status = 'pending_payment';
       subscription.notes = notes ?? null;
       await this.subscriptionsRepo.save(subscription);
-      const plan = await this.plansRepo.findOne({ where: { id: subscription.plan_id } });
+      const plan = await this.plansRepo.findOne({
+        where: { id: subscription.plan_id },
+      });
       await this.syncPartnerBillingState(payment.partner_id, {
         subscriptionStatus: 'pending_payment',
         paymentStatus: 'rejected',

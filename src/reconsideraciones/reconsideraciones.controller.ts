@@ -18,7 +18,9 @@ import { ReconsideracionesService } from './reconsideraciones.service';
 @UseGuards(BimJwtGuard)
 @Controller('reconsideraciones')
 export class ReconsideracionesController {
-  constructor(private readonly reconsideracionesService: ReconsideracionesService) {}
+  constructor(
+    private readonly reconsideracionesService: ReconsideracionesService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateReconsideracionDto, @Request() req: any) {
@@ -40,12 +42,20 @@ export class ReconsideracionesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateReconsideracionDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateReconsideracionDto,
+    @Request() req: any,
+  ) {
     return this.reconsideracionesService.update(id, req.user.tenant_id, dto);
   }
 
   @Patch(':id/status')
-  changeStatus(@Param('id') id: string, @Body() dto: ChangeReconsideracionStatusDto, @Request() req: any) {
+  changeStatus(
+    @Param('id') id: string,
+    @Body() dto: ChangeReconsideracionStatusDto,
+    @Request() req: any,
+  ) {
     return this.reconsideracionesService.changeStatus(
       id,
       req.user.tenant_id,

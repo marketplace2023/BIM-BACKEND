@@ -7,6 +7,17 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { CanActivate } from '@nestjs/common';
 
+type GuardPayload = {
+  sub?: string;
+  id?: string;
+  platform_user_id?: string;
+  tenant_id?: string;
+  partner_id?: string;
+  email?: string;
+  role?: string;
+  roles?: string[];
+};
+
 @Injectable()
 export class BimJwtGuard implements CanActivate {
   constructor(
@@ -22,16 +33,39 @@ export class BimJwtGuard implements CanActivate {
     }
     const token = header.slice(7);
     try {
-      const payload = this.jwtService.verify(token, {
-        secret: this.config.get<string>(
-          'BIM_JWT_SECRET',
-          'bim-secret-change-me',
-        ),
-      });
-      req.user = payload;
+      const payload = this.verifyWithSupportedSecrets(token);
+      const resolvedUserId =
+        payload.platform_user_id ?? payload.id ?? payload.sub;
+
+      req.user = {
+        ...payload,
+        id: resolvedUserId,
+        sub: payload.sub ?? resolvedUserId,
+        platform_user_id: payload.platform_user_id ?? resolvedUserId,
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Token BIM inválido o expirado');
     }
+  }
+
+  private verifyWithSupportedSecrets(token: string): GuardPayload {
+    const secrets = [
+      this.config.get<string>('BIM_JWT_SECRET', 'bim-secret-change-me'),
+      this.config.get<string>('JWT_SECRET', 'changeme'),
+    ].filter(
+      (secret, index, list): secret is string =>
+        Boolean(secret) && list.indexOf(secret) === index,
+    );
+
+    for (const secret of secrets) {
+      try {
+        return this.jwtService.verify<GuardPayload>(token, { secret });
+      } catch {
+        continue;
+      }
+    }
+
+    throw new UnauthorizedException('Token BIM inválido o expirado');
   }
 }

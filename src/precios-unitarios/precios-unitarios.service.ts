@@ -180,7 +180,10 @@ export class PreciosUnitariosService {
   }
 
   private async findRecurso(id: string, tenantId: string) {
-    const recurso = await this.recursoRepo.findOneBy({ id, tenant_id: tenantId });
+    const recurso = await this.recursoRepo.findOneBy({
+      id,
+      tenant_id: tenantId,
+    });
     if (!recurso) throw new NotFoundException(`Recurso #${id} no encontrado`);
     return recurso;
   }

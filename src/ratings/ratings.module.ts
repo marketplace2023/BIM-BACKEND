@@ -7,7 +7,9 @@ import { RatingsController } from './ratings.controller';
 import { RatingsService } from './ratings.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RatingRating, ProductTemplate, ResPartner])],
+  imports: [
+    TypeOrmModule.forFeature([RatingRating, ProductTemplate, ResPartner]),
+  ],
   controllers: [RatingsController],
   providers: [RatingsService],
   exports: [RatingsService],

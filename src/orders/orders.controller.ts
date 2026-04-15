@@ -27,7 +27,11 @@ import { SubmitOrderPaymentProofDto } from './dto/submit-order-payment-proof.dto
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderPaymentStatusDto } from './dto/update-order-payment-status.dto';
 
-const PAYMENT_PROOF_UPLOAD_DIR = join(process.cwd(), 'uploads', 'payment-proofs');
+const PAYMENT_PROOF_UPLOAD_DIR = join(
+  process.cwd(),
+  'uploads',
+  'payment-proofs',
+);
 
 function ensurePaymentProofUploadDir() {
   if (!existsSync(PAYMENT_PROOF_UPLOAD_DIR)) {
@@ -78,7 +82,13 @@ export class OrdersController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.svc.findStoreOrders(user, storeContextId, verticalType, page, limit);
+    return this.svc.findStoreOrders(
+      user,
+      storeContextId,
+      verticalType,
+      page,
+      limit,
+    );
   }
 
   /** GET /api/orders/store/:id */
@@ -127,7 +137,8 @@ export class OrdersController {
   @Patch('store/:id/status')
   updateStoreStatus(
     @Param('id') id: string,
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() dto: UpdateOrderStatusDto,
   ) {
@@ -158,7 +169,8 @@ export class OrdersController {
   @Patch(':id/payment-status')
   updatePaymentStatus(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { id: string; tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() dto: UpdateOrderPaymentStatusDto,
   ) {
@@ -181,8 +193,13 @@ export class OrdersController {
         },
       }),
       fileFilter: (_req, file, cb) => {
-        const allowed = file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf';
-        cb(allowed ? null : new Error('Only image or PDF uploads are allowed'), allowed);
+        const allowed =
+          file.mimetype.startsWith('image/') ||
+          file.mimetype === 'application/pdf';
+        cb(
+          allowed ? null : new Error('Only image or PDF uploads are allowed'),
+          allowed,
+        );
       },
       limits: {
         fileSize: 8 * 1024 * 1024,

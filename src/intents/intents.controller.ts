@@ -31,12 +31,17 @@ export class IntentsController {
     @Query('intent_type') intentType?: string,
     @Query('status') status?: string,
   ) {
-    return this.intentsService.findMine(user, { verticalType, intentType, status });
+    return this.intentsService.findMine(user, {
+      verticalType,
+      intentType,
+      status,
+    });
   }
 
   @Get('store')
   findStoreIntents(
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId?: string,
     @Query('vertical_type') verticalType?: string,
     @Query('intent_type') intentType?: string,
@@ -103,20 +108,32 @@ export class IntentsController {
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() body: { status: string },
   ) {
-    return this.intentsService.updateStatus(id, user, storeContextId, body.status);
+    return this.intentsService.updateStatus(
+      id,
+      user,
+      storeContextId,
+      body.status,
+    );
   }
 
   @Patch(':id/payment-status')
   updatePaymentStatus(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { id: string; tenant_id: string; partner_id: string; email?: string },
     @Headers('x-store-context') storeContextId: string | undefined,
     @Body() dto: UpdateIntentPaymentStatusDto,
   ) {
-    return this.intentsService.updatePaymentStatus(id, user, storeContextId, dto);
+    return this.intentsService.updatePaymentStatus(
+      id,
+      user,
+      storeContextId,
+      dto,
+    );
   }
 }

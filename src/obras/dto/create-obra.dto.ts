@@ -9,8 +9,8 @@ import {
 
 export class CreateObraDto {
   @IsString()
-  @IsNotEmpty()
-  codigo: string;
+  @IsOptional()
+  codigo?: string;
 
   @IsString()
   @IsNotEmpty()

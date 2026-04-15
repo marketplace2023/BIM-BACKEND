@@ -99,7 +99,9 @@ export class FurService {
       return this.persistStoreStatus(store, status);
     }
 
-    throw new ForbiddenException('You do not have permissions to change this FUR-T status');
+    throw new ForbiddenException(
+      'You do not have permissions to change this FUR-T status',
+    );
   }
 
   async updateUserStatus(
@@ -141,8 +143,13 @@ export class FurService {
     const role = this.resolveRole(user.role, user.roles);
     const isOwner = user.partner_id === product.partner_id;
 
-    if (role !== 'admin' && !(isOwner && (status === 'draft' || status === 'review'))) {
-      throw new ForbiddenException('You do not have permissions to change this FUR-P status');
+    if (
+      role !== 'admin' &&
+      !(isOwner && (status === 'draft' || status === 'review'))
+    ) {
+      throw new ForbiddenException(
+        'You do not have permissions to change this FUR-P status',
+      );
     }
 
     const attrs = this.getProductAttributes(product);
@@ -172,7 +179,9 @@ export class FurService {
     const role = this.resolveRole(user.role, user.roles, store.x_partner_role);
 
     if (role !== 'admin' && user.partner_id !== storeId) {
-      throw new ForbiddenException('You do not have access to update this FUR-GBP profile');
+      throw new ForbiddenException(
+        'You do not have access to update this FUR-GBP profile',
+      );
     }
 
     const attrs = this.getPartnerAttributes(store);
@@ -229,7 +238,9 @@ export class FurService {
 
     if (input.role === 'store') {
       if (storeStatus === 'draft') {
-        actions.push('Completa la ficha publica del negocio y enviala a revision');
+        actions.push(
+          'Completa la ficha publica del negocio y enviala a revision',
+        );
       }
       if (storeStatus === 'review') {
         actions.push('Tu negocio esta en revision por administracion');
@@ -349,12 +360,18 @@ export class FurService {
 
   private getUserStatus(user: ResUser): FurStatus {
     const security = this.getUserSecurity(user);
-    return (security.fur_u?.status as FurStatus | undefined) ?? mapLegacyStatusToFurStatus(user.kyc_status);
+    return (
+      (security.fur_u?.status as FurStatus | undefined) ??
+      mapLegacyStatusToFurStatus(user.kyc_status)
+    );
   }
 
   private getStoreStatus(store: ResPartner): FurStatus {
     const attrs = this.getPartnerAttributes(store);
-    return (attrs.fur_t?.status as FurStatus | undefined) ?? mapLegacyStatusToFurStatus(store.x_verification_status);
+    return (
+      (attrs.fur_t?.status as FurStatus | undefined) ??
+      mapLegacyStatusToFurStatus(store.x_verification_status)
+    );
   }
 
   private getProductStatus(product: ProductTemplate): FurStatus {
@@ -368,15 +385,15 @@ export class FurService {
   }
 
   private getUserSecurity(user: ResUser): Record<string, any> {
-    return (user.security_json ?? {}) as Record<string, any>;
+    return user.security_json ?? {};
   }
 
   private getPartnerAttributes(store: ResPartner): Record<string, any> {
-    return (store.attributes_json ?? {}) as Record<string, any>;
+    return store.attributes_json ?? {};
   }
 
   private getProductAttributes(product: ProductTemplate): Record<string, any> {
-    return (product.x_attributes_json ?? {}) as Record<string, any>;
+    return product.x_attributes_json ?? {};
   }
 
   private resolveRole(
@@ -384,17 +401,27 @@ export class FurService {
     roles: string[] = [],
     partnerRole?: string | null,
   ): MarketplaceRole {
-    if (role === 'admin' || roles.includes('admin') || partnerRole === 'admin') {
+    if (
+      role === 'admin' ||
+      roles.includes('admin') ||
+      partnerRole === 'admin'
+    ) {
       return 'admin';
     }
-    if (role === 'store' || roles.includes('store') || partnerRole === 'store') {
+    if (
+      role === 'store' ||
+      roles.includes('store') ||
+      partnerRole === 'store'
+    ) {
       return 'store';
     }
     return 'consumer';
   }
 
   private async loadPartner(id: string) {
-    const store = await this.partnersRepo.findOne({ where: { id, deleted_at: IsNull() } });
+    const store = await this.partnersRepo.findOne({
+      where: { id, deleted_at: IsNull() },
+    });
     if (!store) throw new NotFoundException('FUR-T not found');
     return store;
   }

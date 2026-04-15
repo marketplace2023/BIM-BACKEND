@@ -44,7 +44,7 @@ export class CertificacionesService {
       });
       const numero = (lastCert?.numero ?? 0) + 1;
 
-        const cert = manager.create(BimCertificacion, {
+      const cert = manager.create(BimCertificacion, {
         tenant_id: tenantId,
         obra_id: dto.obra_id,
         presupuesto_id: dto.presupuesto_id,
@@ -132,7 +132,10 @@ export class CertificacionesService {
     });
   }
 
-  async findByObra(obraId: string, tenantId: string): Promise<BimCertificacion[]> {
+  async findByObra(
+    obraId: string,
+    tenantId: string,
+  ): Promise<BimCertificacion[]> {
     await this.findTenantObra(obraId, tenantId);
     return this.certRepo.find({
       where: { obra_id: obraId, tenant_id: tenantId },
@@ -202,7 +205,9 @@ export class CertificacionesService {
   }
 
   private async findTenantObra(id: string, tenantId: string) {
-    const obra = await this.obraRepo.findOne({ where: { id, tenant_id: tenantId } });
+    const obra = await this.obraRepo.findOne({
+      where: { id, tenant_id: tenantId },
+    });
     if (!obra) throw new NotFoundException(`Obra #${id} no encontrada`);
     return obra;
   }

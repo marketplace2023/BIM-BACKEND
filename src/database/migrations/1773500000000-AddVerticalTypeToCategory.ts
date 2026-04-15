@@ -29,7 +29,9 @@ export class AddVerticalTypeToCategory1773500000000 implements MigrationInterfac
       `ALTER TABLE \`product_public_category\` MODIFY \`vertical_type\` varchar(50) NOT NULL`,
     );
 
-    const refreshedTable = await queryRunner.getTable('product_public_category');
+    const refreshedTable = await queryRunner.getTable(
+      'product_public_category',
+    );
     const hasVerticalSlugIndex = refreshedTable?.indices.some(
       (index) => index.name === 'uq_cat_tenant_vertical_slug',
     );

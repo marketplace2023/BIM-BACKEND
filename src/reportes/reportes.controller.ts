@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Request, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Request,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 import { ReportesService } from './reportes.service';

@@ -39,7 +39,11 @@ export class ContratistasController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateContratistaDto, @Request() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateContratistaDto,
+    @Request() req: any,
+  ) {
     return this.contratistasService.update(id, req.user.tenant_id, dto);
   }
 
@@ -56,7 +60,11 @@ export class ContratistasController {
     @Body() dto: AsignarContratistaDto,
     @Request() req: any,
   ) {
-    return this.contratistasService.asignarAObra(obraId, dto, req.user.tenant_id);
+    return this.contratistasService.asignarAObra(
+      obraId,
+      dto,
+      req.user.tenant_id,
+    );
   }
 
   @Get('obras/:obraId/contratistas')

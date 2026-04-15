@@ -95,15 +95,33 @@ export class AddMarketplaceBilling1776000003000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_admin\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_subscription\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_partner\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_tenant\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_admin\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_plan\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_partner\``);
-    await queryRunner.query(`ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_tenant\``);
-    await queryRunner.query(`ALTER TABLE \`marketplace_plan\` DROP FOREIGN KEY \`FK_marketplace_plan_tenant\``);
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_admin\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_subscription\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_partner\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_payment\` DROP FOREIGN KEY \`FK_listing_payment_tenant\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_admin\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_plan\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_partner\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`partner_listing_subscription\` DROP FOREIGN KEY \`FK_listing_subscription_tenant\``,
+    );
+    await queryRunner.query(
+      `ALTER TABLE \`marketplace_plan\` DROP FOREIGN KEY \`FK_marketplace_plan_tenant\``,
+    );
     await queryRunner.query(`DROP TABLE \`partner_listing_payment\``);
     await queryRunner.query(`DROP TABLE \`partner_listing_subscription\``);
     await queryRunner.query(`DROP TABLE \`marketplace_plan\``);

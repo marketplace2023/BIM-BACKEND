@@ -27,17 +27,31 @@ export class StorePaymentMethodsService {
     }
 
     const partner = await this.partnersRepo.findOne({
-      where: { id: requestedPartnerId, tenant_id: user.tenant_id, deleted_at: IsNull() },
+      where: {
+        id: requestedPartnerId,
+        tenant_id: user.tenant_id,
+        deleted_at: IsNull(),
+      },
     });
 
     if (!partner) throw new NotFoundException('Managed store not found');
 
     const basePartner = await this.partnersRepo.findOne({
-      where: { id: user.partner_id, tenant_id: user.tenant_id, deleted_at: IsNull() },
+      where: {
+        id: user.partner_id,
+        tenant_id: user.tenant_id,
+        deleted_at: IsNull(),
+      },
     });
 
-    const effectiveEmail = user.email?.trim().toLowerCase() ?? basePartner?.email?.trim().toLowerCase() ?? null;
-    const sameEmail = Boolean(effectiveEmail) && Boolean(partner.email) && partner.email!.trim().toLowerCase() === effectiveEmail;
+    const effectiveEmail =
+      user.email?.trim().toLowerCase() ??
+      basePartner?.email?.trim().toLowerCase() ??
+      null;
+    const sameEmail =
+      Boolean(effectiveEmail) &&
+      Boolean(partner.email) &&
+      partner.email!.trim().toLowerCase() === effectiveEmail;
     if (!sameEmail) {
       throw new ForbiddenException('Not allowed for this managed store');
     }
@@ -45,8 +59,14 @@ export class StorePaymentMethodsService {
     return partner.id;
   }
 
-  async findMine(user: { tenant_id: string; partner_id: string; email?: string }, requestedPartnerId?: string) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+  async findMine(
+    user: { tenant_id: string; partner_id: string; email?: string },
+    requestedPartnerId?: string,
+  ) {
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
     return this.methodsRepo.find({
       where: { tenant_id: user.tenant_id, partner_id: partnerId },
       order: { is_default: 'DESC', created_at: 'DESC' },
@@ -69,10 +89,16 @@ export class StorePaymentMethodsService {
     requestedPartnerId: string | undefined,
     dto: UpsertStorePaymentMethodDto,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
 
     if (dto.is_default) {
-      await this.methodsRepo.update({ tenant_id: user.tenant_id, partner_id: partnerId }, { is_default: 0 });
+      await this.methodsRepo.update(
+        { tenant_id: user.tenant_id, partner_id: partnerId },
+        { is_default: 0 },
+      );
     }
 
     return this.methodsRepo.save(
@@ -102,12 +128,20 @@ export class StorePaymentMethodsService {
     requestedPartnerId: string | undefined,
     dto: UpsertStorePaymentMethodDto,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
-    const method = await this.methodsRepo.findOne({ where: { id, tenant_id: user.tenant_id, partner_id: partnerId } });
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
+    const method = await this.methodsRepo.findOne({
+      where: { id, tenant_id: user.tenant_id, partner_id: partnerId },
+    });
     if (!method) throw new NotFoundException('Store payment method not found');
 
     if (dto.is_default) {
-      await this.methodsRepo.update({ tenant_id: user.tenant_id, partner_id: partnerId }, { is_default: 0 });
+      await this.methodsRepo.update(
+        { tenant_id: user.tenant_id, partner_id: partnerId },
+        { is_default: 0 },
+      );
     }
 
     Object.assign(method, {
@@ -132,8 +166,13 @@ export class StorePaymentMethodsService {
     user: { tenant_id: string; partner_id: string; email?: string },
     requestedPartnerId: string | undefined,
   ) {
-    const partnerId = await this.resolveManagedPartnerId(user, requestedPartnerId);
-    const method = await this.methodsRepo.findOne({ where: { id, tenant_id: user.tenant_id, partner_id: partnerId } });
+    const partnerId = await this.resolveManagedPartnerId(
+      user,
+      requestedPartnerId,
+    );
+    const method = await this.methodsRepo.findOne({
+      where: { id, tenant_id: user.tenant_id, partner_id: partnerId },
+    });
     if (!method) throw new NotFoundException('Store payment method not found');
     await this.methodsRepo.delete(id);
     return { deleted: true };

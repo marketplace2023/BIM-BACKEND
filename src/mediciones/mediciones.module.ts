@@ -8,7 +8,10 @@ import { MedicionesController } from './mediciones.controller';
 import { MedicionesService } from './mediciones.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BimMedicion, BimObra, BimPartida]), BimAdminModule],
+  imports: [
+    TypeOrmModule.forFeature([BimMedicion, BimObra, BimPartida]),
+    BimAdminModule,
+  ],
   controllers: [MedicionesController],
   providers: [MedicionesService],
   exports: [MedicionesService],

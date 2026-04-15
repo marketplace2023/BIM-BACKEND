@@ -21,6 +21,7 @@ import { extname, join } from 'path';
 import type { Request } from 'express';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BimAdminRoleGuard } from '../common/guards/bim-admin-role.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
@@ -79,7 +80,10 @@ export class StoresController {
       }),
       fileFilter: (_req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        cb(isImage ? null : new Error('Only image uploads are allowed'), isImage);
+        cb(
+          isImage ? null : new Error('Only image uploads are allowed'),
+          isImage,
+        );
       },
       limits: {
         fileSize: 5 * 1024 * 1024,
@@ -125,7 +129,10 @@ export class StoresController {
       }),
       fileFilter: (_req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        cb(isImage ? null : new Error('Only image uploads are allowed'), isImage);
+        cb(
+          isImage ? null : new Error('Only image uploads are allowed'),
+          isImage,
+        );
       },
       limits: {
         files: 8,
@@ -224,6 +231,33 @@ export class StoresController {
     });
   }
 
+  /** GET /api/stores/admin/reviews */
+  @UseGuards(BimJwtGuard, BimAdminRoleGuard)
+  @Get('admin/reviews')
+  getPendingReviews(@CurrentUser() user: { tenant_id: string }) {
+    return this.svc.findPendingReviews(user.tenant_id);
+  }
+
+  /** PATCH /api/stores/admin/:id/approve */
+  @UseGuards(BimJwtGuard, BimAdminRoleGuard)
+  @Patch('admin/:id/approve')
+  approveStore(
+    @CurrentUser() user: { tenant_id: string },
+    @Param('id') id: string,
+  ) {
+    return this.svc.adminSetReviewStatus(user.tenant_id, id, 'published');
+  }
+
+  /** PATCH /api/stores/admin/:id/send-to-draft */
+  @UseGuards(BimJwtGuard, BimAdminRoleGuard)
+  @Patch('admin/:id/send-to-draft')
+  sendStoreToDraft(
+    @CurrentUser() user: { tenant_id: string },
+    @Param('id') id: string,
+  ) {
+    return this.svc.adminSetReviewStatus(user.tenant_id, id, 'draft');
+  }
+
   /** GET /api/stores/:id */
   @UseGuards(BimJwtGuard)
   @Get(':id')
@@ -236,7 +270,8 @@ export class StoresController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
     @Body() dto: UpdateStoreDto,
   ) {
     return this.svc.update(id, user, dto);
@@ -247,7 +282,8 @@ export class StoresController {
   @Patch(':id/publish')
   publish(
     @Param('id') id: string,
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
   ) {
     return this.svc.setPublished(id, user, true);
   }
@@ -257,7 +293,8 @@ export class StoresController {
   @Patch(':id/unpublish')
   unpublish(
     @Param('id') id: string,
-    @CurrentUser() user: { tenant_id: string; partner_id: string; email?: string },
+    @CurrentUser()
+    user: { tenant_id: string; partner_id: string; email?: string },
   ) {
     return this.svc.setPublished(id, user, false);
   }

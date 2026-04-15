@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 import { BimUser } from '../database/entities/bim/bim-user.entity';
 import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResUser } from '../database/entities/identity/res-user.entity';
+import { UserRoleAssignment } from '../database/entities/identity/user-role-assignment.entity';
 import {
   CreateBimUserDto,
   UpdateBimUserDto,
@@ -28,6 +29,8 @@ export class BimAdminService implements OnModuleInit {
     private readonly tenantRepo: Repository<Tenant>,
     @InjectRepository(ResUser)
     private readonly resUserRepo: Repository<ResUser>,
+    @InjectRepository(UserRoleAssignment)
+    private readonly roleAssignmentRepo: Repository<UserRoleAssignment>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -63,39 +66,82 @@ export class BimAdminService implements OnModuleInit {
       email: dto.email,
       is_active: 1,
     });
-    if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
-    const valid = await bcrypt.compare(dto.password, user.password_hash);
-    if (!valid) throw new UnauthorizedException('Credenciales inválidas');
+    if (user) {
+      const valid = await bcrypt.compare(dto.password, user.password_hash);
+      if (!valid) throw new UnauthorizedException('Credenciales inválidas');
 
-    user.last_login_at = new Date();
-    await this.userRepo.save(user);
+      user.last_login_at = new Date();
+      await this.userRepo.save(user);
 
-    const tenantId = await this.resolveTenantId();
-    const platformUserId = await this.resolvePlatformUserId(tenantId);
-    const partnerId = await this.resolveMarketplacePartnerId(platformUserId, tenantId);
-    const payload = {
-      sub: user.id,
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      roles: [user.role],
-      tenant_id: tenantId,
-      platform_user_id: platformUserId,
-      partner_id: partnerId,
-      auth_scope: 'bim',
-    };
-    const access_token = this.jwtService.sign(payload, {
-      secret: this.config.get<string>('BIM_JWT_SECRET', 'bim-secret-change-me'),
-      expiresIn: '8h',
-    });
+      const tenantId = await this.resolveTenantId();
+      const platformUserId = await this.resolvePlatformUserId(tenantId);
+      const partnerId = await this.resolveMarketplacePartnerId(
+        platformUserId,
+        tenantId,
+      );
+      const payload = {
+        sub: user.id,
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        roles: [user.role],
+        tenant_id: tenantId,
+        platform_user_id: platformUserId,
+        partner_id: partnerId,
+        auth_scope: 'bim',
+      };
+      const access_token = this.jwtService.sign(payload, {
+        secret: this.config.get<string>(
+          'BIM_JWT_SECRET',
+          'bim-secret-change-me',
+        ),
+        expiresIn: '8h',
+      });
 
-    const { password_hash: _, ...safeUser } = user;
-    return { access_token, user: safeUser };
+      const { password_hash: _, ...safeUser } = user;
+      return { access_token, user: safeUser };
+    }
+
+    return this.loginMarketplaceUser(dto);
   }
 
-  async findCurrentUser(userId: string): Promise<Partial<BimUser>> {
-    return this.findUser(userId);
+  async findCurrentUser(userId: string): Promise<Record<string, any>> {
+    const bimUser = await this.userRepo.findOne({
+      where: { id: userId, deleted_at: IsNull() },
+    });
+    if (bimUser) {
+      const { password_hash: _, ...safe } = bimUser;
+      return safe;
+    }
+
+    const user = await this.resUserRepo.findOne({
+      where: { id: userId, is_active: 1 },
+      relations: ['partner'],
+    });
+    if (!user) {
+      throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    }
+
+    const assignments = await this.roleAssignmentRepo.find({
+      where: { user_id: user.id },
+      relations: ['role'],
+    });
+    const roles = assignments
+      .map((assignment) => assignment.role?.code)
+      .filter((code): code is string => Boolean(code));
+
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      full_name: user.partner?.name ?? user.username,
+      role: roles.includes('admin') ? 'admin' : 'consulta',
+      roles,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    };
   }
 
   async createUser(dto: CreateBimUserDto): Promise<BimUser> {
@@ -159,6 +205,62 @@ export class BimAdminService implements OnModuleInit {
     await this.userRepo.softRemove(user);
   }
 
+  private async loginMarketplaceUser(
+    dto: BimLoginDto,
+  ): Promise<{ access_token: string; user: Partial<BimUser> }> {
+    const user = await this.resUserRepo.findOne({
+      where: { email: dto.email, is_active: 1 },
+      relations: ['partner'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    const valid = await bcrypt.compare(dto.password, user.password_hash);
+    if (!valid) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    const assignments = await this.roleAssignmentRepo.find({
+      where: { user_id: user.id },
+      relations: ['role'],
+    });
+    const roles = assignments
+      .map((assignment) => assignment.role?.code)
+      .filter((code): code is string => Boolean(code));
+    const role = roles.includes('admin') ? 'admin' : 'consulta';
+
+    const payload = {
+      sub: user.id,
+      id: user.id,
+      email: user.email,
+      role,
+      roles,
+      tenant_id: user.tenant_id,
+      platform_user_id: user.id,
+      partner_id: user.partner_id,
+      auth_scope: 'bim',
+    };
+    const access_token = this.jwtService.sign(payload, {
+      secret: this.config.get<string>('BIM_JWT_SECRET', 'bim-secret-change-me'),
+      expiresIn: '8h',
+    });
+
+    return {
+      access_token,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.partner?.name ?? user.username,
+        role,
+        is_active: user.is_active,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    };
+  }
+
   private async resolveTenantId(): Promise<string> {
     const configuredTenantId = this.config.get<string>('BIM_DEFAULT_TENANT_ID');
     if (configuredTenantId) {
@@ -186,7 +288,9 @@ export class BimAdminService implements OnModuleInit {
   }
 
   private async resolvePlatformUserId(tenantId: string): Promise<string> {
-    const configuredUserId = this.config.get<string>('BIM_DEFAULT_PLATFORM_USER_ID');
+    const configuredUserId = this.config.get<string>(
+      'BIM_DEFAULT_PLATFORM_USER_ID',
+    );
     if (configuredUserId) {
       return configuredUserId;
     }

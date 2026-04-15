@@ -21,17 +21,18 @@ export class ObrasService {
     userId: string,
     tenantId: string,
   ): Promise<BimObra> {
-    const exists = await this.obrasRepo.findOne({
-      where: { codigo: dto.codigo, tenant_id: tenantId },
-    });
+    const codigo = dto.codigo?.trim() || (await this.generateCodigo(tenantId));
+
+    const exists = await this.findAnyByCodigo(codigo, tenantId);
     if (exists) {
       throw new ConflictException(
-        `Ya existe una obra con el código "${dto.codigo}"`,
+        `Ya existe una obra con el código "${codigo}"`,
       );
     }
 
     const obra = this.obrasRepo.create({
       ...dto,
+      codigo,
       tenant_id: tenantId,
       created_by: userId,
     });
@@ -58,14 +59,16 @@ export class ObrasService {
     return obra;
   }
 
-  async update(id: string, tenantId: string, dto: UpdateObraDto): Promise<BimObra> {
+  async update(
+    id: string,
+    tenantId: string,
+    dto: UpdateObraDto,
+  ): Promise<BimObra> {
     const obra = await this.findOne(id, tenantId);
 
     if (dto.codigo && dto.codigo !== obra.codigo) {
-      const duplicate = await this.obrasRepo.findOne({
-        where: { codigo: dto.codigo, tenant_id: tenantId },
-      });
-      if (duplicate) {
+      const duplicate = await this.findAnyByCodigo(dto.codigo, tenantId);
+      if (duplicate && duplicate.id !== id) {
         throw new ConflictException(
           `Ya existe una obra con el código "${dto.codigo}"`,
         );
@@ -79,5 +82,34 @@ export class ObrasService {
   async remove(id: string, tenantId: string): Promise<void> {
     const obra = await this.findOne(id, tenantId);
     await this.obrasRepo.softRemove(obra);
+  }
+
+  private async generateCodigo(tenantId: string) {
+    const obras = await this.obrasRepo
+      .createQueryBuilder('obra')
+      .withDeleted()
+      .where('obra.tenant_id = :tenantId', { tenantId })
+      .select(['obra.codigo'])
+      .getMany();
+
+    const lastNumber = obras.reduce((max, obra) => {
+      const current = obra.codigo
+        ? Number.parseInt(obra.codigo.replace(/\D/g, ''), 10)
+        : 0;
+      return Number.isFinite(current) ? Math.max(max, current) : max;
+    }, 0);
+
+    const nextNumber = lastNumber + 1;
+
+    return `OBR-${String(nextNumber).padStart(5, '0')}`;
+  }
+
+  private findAnyByCodigo(codigo: string, tenantId: string) {
+    return this.obrasRepo
+      .createQueryBuilder('obra')
+      .withDeleted()
+      .where('obra.tenant_id = :tenantId', { tenantId })
+      .andWhere('obra.codigo = :codigo', { codigo })
+      .getOne();
   }
 }

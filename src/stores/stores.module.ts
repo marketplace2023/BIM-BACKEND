@@ -3,6 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BimAdminModule } from '../bim-admin/bim-admin.module';
 import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
+import { ResUser } from '../database/entities/identity/res-user.entity';
+import { UserRole } from '../database/entities/identity/user-role.entity';
+import { UserRoleAssignment } from '../database/entities/identity/user-role-assignment.entity';
 import { ContractorProfile } from '../database/entities/verticals/contractor-profile.entity';
 import { EducationProviderProfile } from '../database/entities/verticals/education-provider-profile.entity';
 import { HardwareStoreProfile } from '../database/entities/verticals/hardware-store-profile.entity';
@@ -10,6 +13,7 @@ import { ProfessionalFirmProfile } from '../database/entities/verticals/professi
 import { SeoAgencyProfile } from '../database/entities/verticals/seo-agency-profile.entity';
 import { ProductTemplate } from '../database/entities/catalog/product-template.entity';
 import { StorePaymentMethodsModule } from '../store-payment-methods/store-payment-methods.module';
+import { BimAdminRoleGuard } from '../common/guards/bim-admin-role.guard';
 import { StoresController } from './stores.controller';
 import { StoresService } from './stores.service';
 
@@ -19,6 +23,9 @@ import { StoresService } from './stores.service';
     StorePaymentMethodsModule,
     TypeOrmModule.forFeature([
       ResPartner,
+      ResUser,
+      UserRole,
+      UserRoleAssignment,
       ContractorProfile,
       EducationProviderProfile,
       HardwareStoreProfile,
@@ -29,7 +36,7 @@ import { StoresService } from './stores.service';
     ]),
   ],
   controllers: [StoresController],
-  providers: [StoresService],
+  providers: [StoresService, BimAdminRoleGuard],
   exports: [StoresService],
 })
 export class StoresModule {}
