@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { BimPrecioUnitario } from '../database/entities/bim/bim-precio-unitario.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
 import { BimApuDescomposicion } from '../database/entities/bim/bim-apu-descomposicion.entity';
@@ -93,7 +93,13 @@ export class PreciosUnitariosService {
     tenantId: string,
     categoria?: string,
   ): Promise<BimPrecioUnitario[]> {
-    const where: any = { activo: 1, tenant_id: tenantId };
+    // The Lulo master catalog is seeded under the root tenant (id=1).
+    // Users from other tenants must also see that shared catalog plus any
+    // APUs they have created under their own tenant.
+    const tenantIds =
+      tenantId === '1' ? ['1'] : ['1', tenantId];
+
+    const where: any = { activo: 1, tenant_id: In(tenantIds) };
     if (categoria) where.categoria = categoria;
     return this.puRepo.find({ where, order: { codigo: 'ASC' } });
   }
@@ -102,12 +108,26 @@ export class PreciosUnitariosService {
     id: string,
     tenantId: string,
   ): Promise<BimPrecioUnitario & { descomposicion: BimApuDescomposicion[] }> {
-    const pu = await this.findPU(id, tenantId);
-    const descomposicion = await this.decompRepo.find({
-      where: { precio_unitario_id: id },
-      relations: ['recurso'],
-      order: { orden: 'ASC' },
-    });
+    // Use query builder to guarantee tenant_id IN (1, tenantId) is emitted
+    // as numeric literals, avoiding any string/bigint coercion issues with
+    // TypeORM's In() helper when the NestJS SWC watcher has stale cache.
+    const pu = await this.puRepo
+      .createQueryBuilder('pu')
+      .where('pu.id = :id', { id: Number(id) })
+      .andWhere('pu.tenant_id IN (:...tenantIds)', {
+        tenantIds: [1, Number(tenantId)],
+      })
+      .getOne();
+
+    if (!pu) throw new NotFoundException(`APU #${id} no encontrado`);
+
+    const descomposicion = await this.decompRepo
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.recurso', 'recurso')
+      .where('d.precio_unitario_id = :puId', { puId: Number(pu.id) })
+      .orderBy('d.orden', 'ASC')
+      .getMany();
+
     return { ...pu, descomposicion };
   }
 
@@ -189,7 +209,9 @@ export class PreciosUnitariosService {
   }
 
   private async findPU(id: string, tenantId: string) {
-    const pu = await this.puRepo.findOneBy({ id, tenant_id: tenantId });
+    // APUs seeded in tenant 1 are the global catalog accessible to all tenants
+    const tenantIds = tenantId === '1' ? ['1'] : ['1', tenantId];
+    const pu = await this.puRepo.findOne({ where: { id, tenant_id: In(tenantIds) } });
     if (!pu) throw new NotFoundException(`APU #${id} no encontrado`);
     return pu;
   }
