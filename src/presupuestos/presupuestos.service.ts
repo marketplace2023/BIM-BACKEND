@@ -111,10 +111,18 @@ export class PresupuestosService {
   async findByObra(
     obraId: string,
     tenantId: string,
+    tipo?: string,
   ): Promise<BimPresupuesto[]> {
     await this.findTenantObra(obraId, tenantId);
+    const where: { obra_id: string; tenant_id: string; tipo?: string } = {
+      obra_id: obraId,
+      tenant_id: tenantId,
+    };
+    if (tipo) {
+      where.tipo = tipo;
+    }
     return this.presupuestoRepo.find({
-      where: { obra_id: obraId, tenant_id: tenantId },
+      where,
       order: { version: 'DESC', created_at: 'DESC' },
     });
   }
@@ -305,8 +313,16 @@ export class PresupuestosService {
       });
       const savedPartida = await manager.save(BimPartida, partida);
 
-      await this.seedPartidaMaterialesFromApu(manager, savedPartida, tenantId);
-      await this.recalcularPrecioUnitarioPartida(savedPartida.id, tenantId, manager);
+      if (savedPartida.precio_unitario_id) {
+        await this.seedPartidaMaterialesFromApu(manager, savedPartida, tenantId);
+        await this.recalcularPrecioUnitarioPartida(
+          savedPartida.id,
+          tenantId,
+          manager,
+        );
+      }
+
+      await this.recalcularTotalByCapitulo(capituloId, tenantId, manager);
 
       return this.findPartida(savedPartida.id, tenantId, manager);
     });
@@ -321,14 +337,21 @@ export class PresupuestosService {
       const partida = await this.findPartida(id, tenantId, manager);
       Object.assign(partida, dto);
       const saved = await manager.save(BimPartida, partida);
+      await this.recalcularTotalByCapitulo(saved.capitulo_id, tenantId, manager);
       return saved;
     });
   }
 
   async removePartida(id: string, tenantId: string): Promise<void> {
-    const partida = await this.findPartida(id, tenantId);
-    if (!partida) throw new NotFoundException(`Partida #${id} no encontrada`);
-    await this.partidaRepo.remove(partida);
+    await this.dataSource.transaction(async (manager) => {
+      const partida = await this.findPartida(id, tenantId, manager);
+      if (!partida) {
+        throw new NotFoundException(`Partida #${id} no encontrada`);
+      }
+      const capituloId = partida.capitulo_id;
+      await manager.remove(BimPartida, partida);
+      await this.recalcularTotalByCapitulo(capituloId, tenantId, manager);
+    });
   }
 
   async findPartidaMateriales(
@@ -369,6 +392,7 @@ export class PresupuestosService {
       });
       const saved = await manager.save(BimPartidaMaterial, item);
       await this.recalcularPrecioUnitarioPartida(partida.id, tenantId, manager);
+      await this.recalcularTotalByCapitulo(partida.capitulo_id, tenantId, manager);
       return saved;
     });
   }
@@ -386,7 +410,9 @@ export class PresupuestosService {
       }
       Object.assign(item, dto);
       const saved = await manager.save(BimPartidaMaterial, item);
+      const partida = await this.findPartida(item.partida_id, tenantId, manager);
       await this.recalcularPrecioUnitarioPartida(item.partida_id, tenantId, manager);
+      await this.recalcularTotalByCapitulo(partida.capitulo_id, tenantId, manager);
       return saved;
     });
   }
@@ -395,8 +421,10 @@ export class PresupuestosService {
     await this.dataSource.transaction(async (manager) => {
       const item = await this.findPartidaMaterial(id, tenantId, manager);
       const partidaId = item.partida_id;
+      const partida = await this.findPartida(partidaId, tenantId, manager);
       await manager.remove(BimPartidaMaterial, item);
       await this.recalcularPrecioUnitarioPartida(partidaId, tenantId, manager);
+      await this.recalcularTotalByCapitulo(partida.capitulo_id, tenantId, manager);
     });
   }
 
@@ -404,16 +432,29 @@ export class PresupuestosService {
   async recalcularTotal(
     presupuestoId: string,
     tenantId: string,
+    manager?: any,
   ): Promise<BimPresupuesto> {
-    const result = await this.partidaRepo
+    const partidaRepo = manager ? manager.getRepository(BimPartida) : this.partidaRepo;
+    const presupuestoRepo = manager
+      ? manager.getRepository(BimPresupuesto)
+      : this.presupuestoRepo;
+
+    const result = await partidaRepo
       .createQueryBuilder('p')
       .innerJoin('bim_capitulos', 'c', 'c.id = p.capitulo_id')
       .where('c.presupuesto_id = :presupuestoId', { presupuestoId })
       .select('SUM(p.importe_total)', 'total')
-      .getRawOne<{ total: string }>();
+      .getRawOne();
 
-    const totalPartidas = parseFloat(result?.total ?? '0');
-    const presupuesto = await this.findOne(presupuestoId, tenantId);
+    const totalPartidas = parseFloat((result as { total?: string } | null)?.total ?? '0');
+    const presupuesto = manager
+      ? await presupuestoRepo.findOne({ where: { id: presupuestoId, tenant_id: tenantId } })
+      : await this.findOne(presupuestoId, tenantId);
+
+    if (!presupuesto) {
+      throw new NotFoundException(`Presupuesto #${presupuestoId} no encontrado`);
+    }
+
     const gi = parseFloat(presupuesto.gastos_indirectos_pct) / 100;
     const ben = parseFloat(presupuesto.beneficio_pct) / 100;
     const iva = parseFloat(presupuesto.iva_pct) / 100;
@@ -422,7 +463,7 @@ export class PresupuestosService {
     const total = costeDirecto * (1 + gi + ben) * (1 + iva);
 
     presupuesto.total_presupuesto = total.toFixed(2);
-    return this.presupuestoRepo.save(presupuesto);
+    return presupuestoRepo.save(presupuesto);
   }
 
   private async findTenantObra(id: string, tenantId: string) {
@@ -577,6 +618,19 @@ export class PresupuestosService {
     partida.precio_unitario =
       (parseFloat((result as { total?: string | null } | null)?.total ?? '0') || 0).toFixed(4);
     await partidaRepo.save(partida);
+  }
+
+  private async recalcularTotalByCapitulo(
+    capituloId: string,
+    tenantId: string,
+    manager?: any,
+  ): Promise<BimPresupuesto> {
+    const repo = manager ? manager.getRepository(BimCapitulo) : this.capituloRepo;
+    const capitulo = await repo.findOne({ where: { id: capituloId } });
+    if (!capitulo) {
+      throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
+    }
+    return this.recalcularTotal(capitulo.presupuesto_id, tenantId, manager);
   }
 
   private renderPdfHeader(

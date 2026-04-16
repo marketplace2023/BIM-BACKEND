@@ -104,7 +104,7 @@ export class CreatePresupuestoDto {
   obra_id: string;
 
   @IsOptional()
-  @IsIn(['obra', 'orientativo'])
+  @IsIn(['obra', 'orientativo', 'sin_apu'])
   tipo?: string;
 
   @IsString()

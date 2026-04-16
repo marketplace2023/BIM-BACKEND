@@ -45,8 +45,12 @@ export class PresupuestosController {
   }
 
   @Get('obra/:obraId')
-  findByObra(@Param('obraId') obraId: string, @Request() req: any) {
-    return this.presupuestosService.findByObra(obraId, req.user.tenant_id);
+  findByObra(
+    @Param('obraId') obraId: string,
+    @Query('tipo') tipo: string | undefined,
+    @Request() req: any,
+  ) {
+    return this.presupuestosService.findByObra(obraId, req.user.tenant_id, tipo);
   }
 
   @Get(':id')
