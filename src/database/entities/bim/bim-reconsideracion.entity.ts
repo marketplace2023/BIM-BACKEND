@@ -10,11 +10,13 @@ import {
 } from 'typeorm';
 import { BimObra } from './bim-obra.entity';
 import { BimPartida } from './bim-partida.entity';
+import { BimReconsideracionDocumento } from './bim-reconsideracion-documento.entity';
 import { ResUser } from '../identity/res-user.entity';
 
 @Entity('bim_reconsideraciones')
 @Index('idx_bim_reconsideraciones_tenant', ['tenant_id'])
 @Index('idx_bim_reconsideraciones_obra', ['obra_id'])
+@Index('idx_bim_reconsideraciones_documento', ['documento_id'])
 @Index('idx_bim_reconsideraciones_partida', ['partida_id'])
 export class BimReconsideracion {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
@@ -29,6 +31,13 @@ export class BimReconsideracion {
   @ManyToOne(() => BimObra, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'obra_id' })
   obra: BimObra;
+
+  @Column({ type: 'bigint', unsigned: true })
+  documento_id: string;
+
+  @ManyToOne(() => BimReconsideracionDocumento, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'documento_id' })
+  documento: BimReconsideracionDocumento;
 
   @Column({ type: 'bigint', unsigned: true })
   partida_id: string;

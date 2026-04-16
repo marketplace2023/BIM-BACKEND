@@ -59,6 +59,7 @@ export { BimPartida } from './bim/bim-partida.entity';
 export { BimPartidaMaterial } from './bim/bim-partida-material.entity';
 export { BimComputo } from './bim/bim-computo.entity';
 export { BimMedicion } from './bim/bim-medicion.entity';
+export { BimReconsideracionDocumento } from './bim/bim-reconsideracion-documento.entity';
 export { BimReconsideracion } from './bim/bim-reconsideracion.entity';
 export { BimCertificacion } from './bim/bim-certificacion.entity';
 export { BimLineaCertificacion } from './bim/bim-linea-certificacion.entity';

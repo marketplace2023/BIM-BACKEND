@@ -2,14 +2,22 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BimAdminModule } from '../bim-admin/bim-admin.module';
 import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
+import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
+import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { ReconsideracionesController } from './reconsideraciones.controller';
 import { ReconsideracionesService } from './reconsideraciones.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([BimReconsideracion, BimObra, BimPartida]),
+    TypeOrmModule.forFeature([
+      BimReconsideracion,
+      BimReconsideracionDocumento,
+      BimObra,
+      BimPartida,
+      BimPresupuesto,
+    ]),
     BimAdminModule,
   ],
   controllers: [ReconsideracionesController],

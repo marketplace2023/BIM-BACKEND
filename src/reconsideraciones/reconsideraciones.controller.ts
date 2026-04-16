@@ -6,13 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
-import { CreateReconsideracionDto } from './dto/create-reconsideracion.dto';
-import { UpdateReconsideracionDto } from './dto/update-reconsideracion.dto';
-import { ChangeReconsideracionStatusDto } from './dto/change-reconsideracion-status.dto';
+import { CreateReconsideracionDocumentoDto } from './dto/create-reconsideracion-documento.dto';
+import { UpdateReconsideracionDocumentoDto } from './dto/update-reconsideracion-documento.dto';
+import { SaveReconsideracionDetallesDto } from './dto/save-reconsideracion-detalles.dto';
 import { ReconsideracionesService } from './reconsideraciones.service';
 
 @UseGuards(BimJwtGuard)
@@ -22,50 +23,65 @@ export class ReconsideracionesController {
     private readonly reconsideracionesService: ReconsideracionesService,
   ) {}
 
-  @Post()
-  create(@Body() dto: CreateReconsideracionDto, @Request() req: any) {
-    return this.reconsideracionesService.create(
-      dto,
-      req.user.platform_user_id ?? req.user.id,
-      req.user.tenant_id,
-    );
-  }
-
   @Get('obra/:obraId')
-  findByObra(@Param('obraId') obraId: string, @Request() req: any) {
-    return this.reconsideracionesService.findByObra(obraId, req.user.tenant_id);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string, @Request() req: any) {
-    return this.reconsideracionesService.findOne(id, req.user.tenant_id);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateReconsideracionDto,
+  findByObra(
+    @Param('obraId') obraId: string,
+    @Query('tipo') tipo: string | undefined,
+    @Query('presupuestoId') presupuestoId: string | undefined,
     @Request() req: any,
   ) {
-    return this.reconsideracionesService.update(id, req.user.tenant_id, dto);
-  }
-
-  @Patch(':id/status')
-  changeStatus(
-    @Param('id') id: string,
-    @Body() dto: ChangeReconsideracionStatusDto,
-    @Request() req: any,
-  ) {
-    return this.reconsideracionesService.changeStatus(
-      id,
+    return this.reconsideracionesService.findByObra(
+      obraId,
       req.user.tenant_id,
-      req.user.platform_user_id ?? req.user.id,
-      dto,
+      tipo,
+      presupuestoId,
     );
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string, @Request() req: any) {
-    return this.reconsideracionesService.remove(id, req.user.tenant_id);
+  @Post('documentos')
+  createDocumento(@Body() dto: CreateReconsideracionDocumentoDto, @Request() req: any) {
+    return this.reconsideracionesService.createDocumento(
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
+  }
+
+  @Get('documentos/:id')
+  findDocumento(@Param('id') id: string, @Request() req: any) {
+    return this.reconsideracionesService.findDocumento(id, req.user.tenant_id);
+  }
+
+  @Patch('documentos/:id')
+  updateDocumento(
+    @Param('id') id: string,
+    @Body() dto: UpdateReconsideracionDocumentoDto,
+    @Request() req: any,
+  ) {
+    return this.reconsideracionesService.updateDocumento(id, req.user.tenant_id, dto);
+  }
+
+  @Delete('documentos/:id')
+  removeDocumento(@Param('id') id: string, @Request() req: any) {
+    return this.reconsideracionesService.removeDocumento(id, req.user.tenant_id);
+  }
+
+  @Get('documentos/:id/resumen')
+  getDocumentoResumen(@Param('id') id: string, @Request() req: any) {
+    return this.reconsideracionesService.getDocumentoResumen(id, req.user.tenant_id);
+  }
+
+  @Patch('documentos/:id/detalles')
+  saveDocumentoDetalles(
+    @Param('id') id: string,
+    @Body() dto: SaveReconsideracionDetallesDto,
+    @Request() req: any,
+  ) {
+    return this.reconsideracionesService.saveDocumentoDetalles(
+      id,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+      dto,
+    );
   }
 }
