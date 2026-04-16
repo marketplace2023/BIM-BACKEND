@@ -179,6 +179,8 @@ export class ReconsideracionesService {
       const totales = acumuladosTodos.get(String(partida.id)) ?? this.emptyAcumulado();
       const aumentoActual = actual && actual.tipo === 'aumento' ? this.toNumber(actual.cantidad_variacion) : 0;
       const montoAumentoActual = actual && actual.tipo === 'aumento' ? this.toNumber(actual.monto_variacion) : 0;
+      const disminucionActual = actual && actual.tipo === 'disminucion' ? Math.abs(this.toNumber(actual.cantidad_variacion)) : 0;
+      const montoDisminucionActual = actual && actual.tipo === 'disminucion' ? this.toNumber(actual.monto_variacion) : 0;
       const cantidadModificada = cantidadOriginal + totales.cantidadAumento - totales.cantidadDisminucion;
       const totalModificado = cantidadModificada * precioUnitario;
       const porEjecutar = cantidadOriginal + previos.cantidadAumento - previos.cantidadDisminucion;
@@ -195,6 +197,8 @@ export class ReconsideracionesService {
         total_original: totalOriginal.toFixed(2),
         aumento_actual: aumentoActual.toFixed(4),
         monto_aumento_actual: montoAumentoActual.toFixed(2),
+        disminucion_actual: disminucionActual.toFixed(4),
+        monto_disminucion_actual: montoDisminucionActual.toFixed(2),
         cantidad_aumento_acumulado: totales.cantidadAumento.toFixed(4),
         total_aumento_acumulado: totales.montoAumento.toFixed(2),
         cantidad_disminucion_acumulada: totales.cantidadDisminucion.toFixed(4),
@@ -210,7 +214,9 @@ export class ReconsideracionesService {
     const totalOriginal = detalle.reduce((sum, item) => sum + this.toNumber(item.total_original), 0);
     const totalAumentosActuales = detalle.reduce((sum, item) => sum + this.toNumber(item.monto_aumento_actual), 0);
     const totalAumentosPrevios = detalle.reduce((sum, item) => sum + (this.toNumber(item.total_aumento_acumulado) - this.toNumber(item.monto_aumento_actual)), 0);
-    const totalDisminuciones = detalle.reduce((sum, item) => sum + this.toNumber(item.total_disminucion_acumulada), 0);
+    const totalDisminucionesActuales = detalle.reduce((sum, item) => sum + this.toNumber(item.monto_disminucion_actual), 0);
+    const totalDisminucionesPrevias = detalle.reduce((sum, item) => sum + (this.toNumber(item.total_disminucion_acumulada) - this.toNumber(item.monto_disminucion_actual)), 0);
+    const totalDisminuciones = totalDisminucionesPrevias + totalDisminucionesActuales;
     const totalModificado = detalle.reduce((sum, item) => sum + this.toNumber(item.total_modificado), 0);
 
     return {
@@ -221,6 +227,9 @@ export class ReconsideracionesService {
         aumentos_anteriores: totalAumentosPrevios.toFixed(2),
         aumentos_actuales: totalAumentosActuales.toFixed(2),
         aumentos_acumulados: (totalAumentosPrevios + totalAumentosActuales).toFixed(2),
+        disminuciones_anteriores: totalDisminucionesPrevias.toFixed(2),
+        disminuciones_actuales: totalDisminucionesActuales.toFixed(2),
+        disminuciones_acumuladas: totalDisminuciones.toFixed(2),
         disminuciones: totalDisminuciones.toFixed(2),
         modificado: totalModificado.toFixed(2),
       },
