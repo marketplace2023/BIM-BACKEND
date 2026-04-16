@@ -11,7 +11,9 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PresupuestosService } from './presupuestos.service';
 import {
   CreatePresupuestoDto,
@@ -55,6 +57,22 @@ export class PresupuestosController {
   @Get(':id/arbol')
   findWithTree(@Param('id') id: string, @Request() req: any) {
     return this.presupuestosService.findWithTree(id, req.user.tenant_id);
+  }
+
+  @Get(':id/pdf')
+  async printPdf(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.presupuestosService.generatePdf(
+      id,
+      req.user.tenant_id,
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Patch(':id')

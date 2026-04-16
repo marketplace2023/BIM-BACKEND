@@ -74,7 +74,10 @@ export class ReportesService {
       throw new NotFoundException('Presupuesto no encontrado');
     }
 
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const doc = new PDFDocument({
+      margin: type === 'presupuesto' ? 28 : 40,
+      size: 'A4',
+    });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     const done = new Promise<Buffer>((resolve) =>
@@ -94,17 +97,20 @@ export class ReportesService {
       throw new BadRequestException('Tipo de reporte no soportado');
     }
 
-    this.renderHeader(doc, reportTitle, obra.nombre, presupuesto?.nombre);
-
     switch (type) {
       case 'presupuesto':
-        await this.renderPresupuesto(
+        await this.renderPresupuestoClassic(
           doc,
-          tenantId,
-          presupuesto!.id,
-          presupuesto!.moneda,
+          obra,
+          presupuesto!,
         );
         break;
+      default:
+        this.renderHeader(doc, reportTitle, obra.nombre, presupuesto?.nombre);
+        break;
+    }
+
+    switch (type) {
       case 'mediciones':
         await this.renderMediciones(doc, tenantId, obraId);
         break;
@@ -201,6 +207,224 @@ export class ReportesService {
       }
       doc.moveDown(0.4);
     }
+  }
+
+  private async renderPresupuestoClassic(
+    doc: PDFKit.PDFDocument,
+    obra: BimObra,
+    presupuesto: BimPresupuesto,
+  ) {
+    const capitulos = await this.capituloRepo.find({
+      where: { presupuesto_id: presupuesto.id },
+      order: { orden: 'ASC' },
+    });
+    const partidas = (
+      await Promise.all(
+        capitulos.map(async (capitulo) => {
+          const rows = await this.partidaRepo.find({
+            where: { capitulo_id: capitulo.id },
+            order: { orden: 'ASC', id: 'ASC' },
+          });
+          return rows.map((partida) => ({ partida, capitulo }));
+        }),
+      )
+    ).flat();
+
+    const pageWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const left = doc.page.margins.left;
+    const top = doc.y;
+
+    doc.rect(left, top, pageWidth, 102).lineWidth(1).stroke('#111111');
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(14)
+      .fillColor('#111111')
+      .text('NO SE HA PERSONALIZADO CORRECTAMENTE', left + 10, top + 6, {
+        width: pageWidth - 20,
+        align: 'left',
+      });
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(18)
+      .fillColor('#111111')
+      .text('PRESUPUESTO', left, top + 26, {
+        width: pageWidth,
+        align: 'center',
+      });
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .text(`Pág N°:  1`, left + pageWidth - 142, top + 30, {
+        width: 132,
+        align: 'right',
+      })
+      .text(`Fecha:  ${new Date().toLocaleDateString('es-ES')}`, left + pageWidth - 142, top + 50, {
+        width: 132,
+        align: 'right',
+      });
+
+    const contrato = obra.meta_json?.contrato_numero ?? presupuesto.descripcion ?? `ALC-${String(obra.id).padStart(4, '0')}`;
+    const propietario = obra.cliente || 'CONSTRUCTORA';
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .text('Obra:', left + 6, top + 54)
+      .text('Contrato N°:', left + 6, top + 76)
+      .text('Propietario:', left + 6, top + 98);
+
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .text(obra.nombre, left + 82, top + 54, { width: 300 })
+      .text(contrato, left + 82, top + 76, { width: 300 })
+      .text(propietario, left + 82, top + 98, { width: 300 });
+
+    doc.y = top + 102;
+    this.renderClassicBudgetTable(doc, partidas, presupuesto.moneda);
+
+    doc.moveDown(0.8);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .text(`TOTAL GENERAL ${presupuesto.moneda}: ${this.formatPlainNumber(presupuesto.total_presupuesto)}`, {
+        align: 'right',
+      });
+  }
+
+  private renderClassicBudgetTable(
+    doc: PDFKit.PDFDocument,
+    rows: Array<{ partida: BimPartida; capitulo: BimCapitulo }>,
+    currency: string,
+  ) {
+    const left = doc.page.margins.left;
+    const totalWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const widths = [34, 110, 180, 46, 60, 52, 57];
+    const headers = [
+      '',
+      'PARTIDA',
+      'DESCRIPCIÓN',
+      'UNIDAD',
+      'CANTIDAD',
+      'P.U.',
+      currency === 'VES' ? 'TOTAL Bs.' : `TOTAL ${currency}`,
+    ];
+    const tableTop = doc.y;
+
+    let x = left;
+    doc.rect(left, tableTop, totalWidth, 18).lineWidth(1).stroke('#111111');
+    widths.forEach((width, index) => {
+      if (index > 0) {
+        doc.moveTo(x, tableTop).lineTo(x, tableTop + 18).stroke('#111111');
+      }
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(headers[index], x + 4, tableTop + 5, {
+          width: width - 8,
+          align: index >= 4 ? 'center' : 'left',
+        });
+      x += width;
+    });
+
+    doc.y = tableTop + 18;
+
+    rows.forEach(({ partida }, index) => {
+      const descHeight = doc.heightOfString(partida.descripcion, {
+        width: widths[2] - 10,
+        align: 'left',
+      });
+      const codeHeight = doc.heightOfString(partida.codigo, {
+        width: widths[1] - 10,
+        align: 'left',
+      });
+      const rowHeight = Math.max(28, Math.max(descHeight, codeHeight) + 10);
+
+      this.ensureClassicBudgetPage(doc, rowHeight + 30, widths, headers, currency);
+
+      const topY = doc.y;
+      let lineX = left;
+      doc.rect(left, topY, totalWidth, rowHeight).lineWidth(0.5).stroke('#b7b7b7');
+      widths.forEach((width, colIndex) => {
+        if (colIndex > 0) {
+          doc.moveTo(lineX, topY).lineTo(lineX, topY + rowHeight).stroke('#b7b7b7');
+        }
+        lineX += width;
+      });
+
+      const columns = [
+        String(index + 1),
+        partida.codigo,
+        partida.descripcion,
+        partida.unidad,
+        this.formatPlainNumber(partida.cantidad),
+        this.formatPlainNumber(partida.precio_unitario),
+        this.formatPlainNumber(partida.importe_total),
+      ];
+
+      let cellX = left;
+      columns.forEach((value, colIndex) => {
+        doc
+          .font(colIndex === 1 ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(7.5)
+          .text(value, cellX + 4, topY + 4, {
+            width: widths[colIndex] - 8,
+            align: colIndex === 0 ? 'center' : colIndex >= 4 ? 'right' : 'left',
+            lineGap: 1,
+          });
+        cellX += widths[colIndex];
+      });
+
+      doc.y = topY + rowHeight;
+    });
+  }
+
+  private ensureClassicBudgetPage(
+    doc: PDFKit.PDFDocument,
+    requiredHeight: number,
+    widths: number[],
+    headers: string[],
+    currency: string,
+  ) {
+    if (doc.y + requiredHeight <= doc.page.height - doc.page.margins.bottom) {
+      return;
+    }
+
+    doc.addPage();
+    const left = doc.page.margins.left;
+    const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const top = doc.y;
+    let x = left;
+
+    doc.rect(left, top, totalWidth, 18).lineWidth(1).stroke('#111111');
+    widths.forEach((width, index) => {
+      if (index > 0) {
+        doc.moveTo(x, top).lineTo(x, top + 18).stroke('#111111');
+      }
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(headers[index], x + 4, top + 5, {
+          width: width - 8,
+          align: index >= 4 ? 'center' : 'left',
+        });
+      x += width;
+    });
+
+    doc.y = top + 18;
+  }
+
+  private formatPlainNumber(value: number | string | null | undefined) {
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(value ?? '0');
+    return new Intl.NumberFormat('es-ES', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isNaN(parsed) ? 0 : parsed);
   }
 
   private async renderMediciones(

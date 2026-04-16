@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  BadRequestException,
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -9,6 +10,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { randomBytes, createHash } from 'crypto';
 import { Tenant } from '../database/entities/core/tenant.entity';
 import { ResUser } from '../database/entities/identity/res-user.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
@@ -16,6 +18,8 @@ import { UserRole } from '../database/entities/identity/user-role.entity';
 import { UserRoleAssignment } from '../database/entities/identity/user-role-assignment.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/forgot-password.dto';
+import { PasswordResetMailerService } from './password-reset-mailer.service';
 import {
   ENTITY_TYPES,
   mapFurStatusToLegacy,
@@ -34,6 +38,7 @@ export class AuthService implements OnModuleInit {
     @InjectRepository(UserRoleAssignment)
     private roleAssignmentsRepo: Repository<UserRoleAssignment>,
     private jwtService: JwtService,
+    private passwordResetMailer: PasswordResetMailerService,
   ) {}
 
   async onModuleInit() {
@@ -127,6 +132,72 @@ export class AuthService implements OnModuleInit {
 
     const roles = await this.getUserRoles(user.id);
     return this._buildToken(user, user.partner, roles);
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.usersRepo.findOne({ where: { email } });
+
+    if (!user) {
+      return {
+        success: true,
+        message:
+          'Si el correo existe, te enviaremos instrucciones para restablecer la contrasena.',
+      };
+    }
+
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
+    const currentSecurity = user.security_json ?? {};
+
+    user.security_json = {
+      ...currentSecurity,
+      password_reset: {
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+        requested_at: new Date().toISOString(),
+      },
+    };
+
+    await this.usersRepo.save(user);
+
+    const appUrl = this.configService.get<string>('APP_URL', 'http://localhost:5173');
+    const resetUrl = `${appUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
+    await this.passwordResetMailer.sendResetLink(user.email, resetUrl);
+
+    return {
+      success: true,
+      message:
+        'Si el correo existe, te enviaremos instrucciones para restablecer la contrasena.',
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const tokenHash = createHash('sha256').update(dto.token).digest('hex');
+    const users = await this.usersRepo.find();
+    const user = users.find((candidate) => {
+      const resetData = candidate.security_json?.password_reset;
+      return resetData?.token_hash === tokenHash;
+    });
+
+    if (!user) {
+      throw new BadRequestException('El enlace de recuperacion no es valido o ya expiro.');
+    }
+
+    const resetData = user.security_json?.password_reset;
+    if (!resetData?.expires_at || new Date(resetData.expires_at).getTime() < Date.now()) {
+      throw new BadRequestException('El enlace de recuperacion no es valido o ya expiro.');
+    }
+
+    user.password_hash = await bcrypt.hash(dto.password, 12);
+    user.security_json = {
+      ...(user.security_json ?? {}),
+      password_reset: null,
+    };
+    await this.usersRepo.save(user);
+
+    return { success: true, message: 'Contrasena actualizada correctamente.' };
   }
 
   async getProfile(userId: string) {

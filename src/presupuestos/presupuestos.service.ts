@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import PDFDocument = require('pdfkit');
 import { Repository, DataSource } from 'typeorm';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
@@ -150,6 +151,51 @@ export class PresupuestosService {
         ...cap,
         partidas: partidasPorCapitulo.get(cap.id) ?? [],
       })),
+    };
+  }
+
+  async generatePdf(id: string, tenantId: string) {
+    const presupuesto = await this.findOne(id, tenantId);
+    const tree = await this.findWithTree(id, tenantId);
+
+    const doc = new PDFDocument({ margin: 36, size: 'A4' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    const done = new Promise<Buffer>((resolve) =>
+      doc.on('end', () => resolve(Buffer.concat(chunks))),
+    );
+
+    this.renderPdfHeader(doc, presupuesto, tree.capitulos.length);
+    this.renderPdfSummary(doc, presupuesto, tree.capitulos.reduce((sum, cap) => sum + (cap.partidas?.length ?? 0), 0));
+
+    for (const capitulo of tree.capitulos) {
+      this.ensurePdfSpace(doc, 70);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .fillColor('#1f2937')
+        .text(`${capitulo.codigo}  ${capitulo.nombre}`);
+      doc.moveDown(0.3);
+
+      this.renderPdfPartidasTable(doc, capitulo.partidas ?? [], presupuesto.moneda);
+      doc.moveDown(0.8);
+    }
+
+    doc
+      .moveDown(0.8)
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor('#111827')
+      .text(`TOTAL PRESUPUESTO: ${this.formatCurrency(presupuesto.total_presupuesto, presupuesto.moneda)}`, {
+        align: 'right',
+      });
+
+    doc.end();
+    const buffer = await done;
+
+    return {
+      buffer,
+      filename: `presupuesto-${presupuesto.obra?.codigo ?? presupuesto.id}.pdf`,
     };
   }
 
@@ -531,5 +577,154 @@ export class PresupuestosService {
     partida.precio_unitario =
       (parseFloat((result as { total?: string | null } | null)?.total ?? '0') || 0).toFixed(4);
     await partidaRepo.save(partida);
+  }
+
+  private renderPdfHeader(
+    doc: PDFKit.PDFDocument,
+    presupuesto: BimPresupuesto,
+    chapterCount: number,
+  ) {
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(18)
+      .fillColor('#111827')
+      .text('PRESUPUESTO DE OBRA');
+
+    doc.moveDown(0.4);
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor('#4b5563')
+      .text(`Proyecto: ${presupuesto.obra?.codigo ?? ''} - ${presupuesto.obra?.nombre ?? ''}`)
+      .text(`Presupuesto: v${presupuesto.version} - ${presupuesto.nombre}`)
+      .text(`Estado: ${presupuesto.estado}    Moneda: ${presupuesto.moneda}    Fecha: ${new Date().toLocaleDateString('es-ES')}`)
+      .text(`Capitulos: ${chapterCount}`);
+
+    doc.moveDown(0.8);
+  }
+
+  private renderPdfSummary(
+    doc: PDFKit.PDFDocument,
+    presupuesto: BimPresupuesto,
+    partidaCount: number,
+  ) {
+    const top = doc.y;
+    const left = doc.page.margins.left;
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    doc
+      .roundedRect(left, top, width, 54, 8)
+      .fillAndStroke('#f9fafb', '#e5e7eb');
+
+    const labels = [
+      ['Partidas', String(partidaCount)],
+      ['Indirectos', `${Number(presupuesto.gastos_indirectos_pct ?? '0').toFixed(2)}%`],
+      ['Beneficio', `${Number(presupuesto.beneficio_pct ?? '0').toFixed(2)}%`],
+      ['IVA', `${Number(presupuesto.iva_pct ?? '0').toFixed(2)}%`],
+    ] as const;
+
+    const colWidth = width / labels.length;
+    labels.forEach(([label, value], index) => {
+      const x = left + index * colWidth;
+      doc
+        .fillColor('#6b7280')
+        .font('Helvetica')
+        .fontSize(8)
+        .text(label, x + 12, top + 10, { width: colWidth - 24, align: 'left' })
+        .fillColor('#111827')
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .text(value, x + 12, top + 24, { width: colWidth - 24, align: 'left' });
+    });
+
+    doc.y = top + 68;
+  }
+
+  private renderPdfPartidasTable(
+    doc: PDFKit.PDFDocument,
+    partidas: BimPartida[],
+    currency: string,
+  ) {
+    const startX = doc.page.margins.left;
+    const widths = [74, 232, 44, 54, 62, 70];
+    const headers = ['Codigo', 'Descripcion', 'Und', 'Cant.', 'P.U.', 'Total'];
+    const headerTop = doc.y;
+
+    doc
+      .roundedRect(startX, headerTop, widths.reduce((sum, item) => sum + item, 0), 22, 4)
+      .fill('#eef2f7');
+
+    let cursorX = startX;
+    headers.forEach((header, index) => {
+      doc
+        .fillColor('#374151')
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(header, cursorX + 6, headerTop + 7, {
+          width: widths[index] - 12,
+          align: index >= 3 ? 'right' : 'left',
+        });
+      cursorX += widths[index];
+    });
+
+    doc.y = headerTop + 26;
+
+    partidas.forEach((partida, index) => {
+      const rowTop = doc.y;
+      const descripcionHeight = doc.heightOfString(partida.descripcion, {
+        width: widths[1] - 12,
+        align: 'left',
+      });
+      const rowHeight = Math.max(18, descripcionHeight + 8);
+
+      this.ensurePdfSpace(doc, rowHeight + 8);
+
+      if (index % 2 === 0) {
+        doc
+          .rect(startX, rowTop, widths.reduce((sum, item) => sum + item, 0), rowHeight)
+          .fill('#fcfcfd');
+      }
+
+      let x = startX;
+      const values = [
+        partida.codigo,
+        partida.descripcion,
+        partida.unidad,
+        Number(partida.cantidad).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        this.formatCurrency(partida.precio_unitario, currency),
+        this.formatCurrency(partida.importe_total, currency),
+      ];
+
+      values.forEach((value, valueIndex) => {
+        doc
+          .fillColor('#111827')
+          .font(valueIndex === 1 ? 'Helvetica' : 'Helvetica')
+          .fontSize(8)
+          .text(value, x + 6, rowTop + 4, {
+            width: widths[valueIndex] - 12,
+            align: valueIndex >= 3 ? 'right' : 'left',
+          });
+        x += widths[valueIndex];
+      });
+
+      doc.y = rowTop + rowHeight;
+    });
+  }
+
+  private ensurePdfSpace(doc: PDFKit.PDFDocument, requiredHeight: number) {
+    if (doc.y + requiredHeight <= doc.page.height - doc.page.margins.bottom) {
+      return;
+    }
+    doc.addPage();
+  }
+
+  private formatCurrency(value: number | string | null | undefined, currency = 'USD') {
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(value ?? '0');
+    return new Intl.NumberFormat('es-ES', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isNaN(parsed) ? 0 : parsed);
   }
 }

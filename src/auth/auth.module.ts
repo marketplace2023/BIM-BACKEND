@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PasswordResetMailerService } from './password-reset-mailer.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ResUser } from '../database/entities/identity/res-user.entity';
 import { ResPartner } from '../database/entities/identity/res-partner.entity';
@@ -34,7 +35,7 @@ import { UserRoleAssignment } from '../database/entities/identity/user-role-assi
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, PasswordResetMailerService],
   exports: [JwtModule],
 })
 export class AuthModule {}
