@@ -8,8 +8,12 @@ export class CreateReconsideracionDocumentoDto {
   presupuesto_id: string;
 
   @IsOptional()
-  @IsIn(['aumento', 'disminucion'])
+  @IsIn(['aumento', 'disminucion', 'precio', 'extra'])
   tipo?: string;
+
+  @IsOptional()
+  @IsString()
+  certificacion_id?: string;
 
   @IsOptional()
   @IsDateString()

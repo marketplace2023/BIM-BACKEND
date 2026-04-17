@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { BimObra } from './bim-obra.entity';
+import { BimMedicionDocumento } from './bim-medicion-documento.entity';
 import { BimPresupuesto } from './bim-presupuesto.entity';
 import { ResUser } from '../identity/res-user.entity';
 
@@ -35,6 +36,13 @@ export class BimCertificacion {
   @ManyToOne(() => BimPresupuesto, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'presupuesto_id' })
   presupuesto: BimPresupuesto;
+
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  medicion_documento_id: string | null;
+
+  @ManyToOne(() => BimMedicionDocumento, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'medicion_documento_id' })
+  medicion_documento: BimMedicionDocumento | null;
 
   @Column({ type: 'smallint' })
   numero: number;

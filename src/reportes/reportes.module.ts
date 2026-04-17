@@ -7,8 +7,11 @@ import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimComputo } from '../database/entities/bim/bim-computo.entity';
 import { BimMedicion } from '../database/entities/bim/bim-medicion.entity';
+import { BimMedicionDocumento } from '../database/entities/bim/bim-medicion-documento.entity';
 import { BimCertificacion } from '../database/entities/bim/bim-certificacion.entity';
 import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certificacion.entity';
+import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
+import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
 import { ReportesController } from './reportes.controller';
 import { ReportesService } from './reportes.service';
@@ -22,8 +25,11 @@ import { ReportesService } from './reportes.service';
       BimPartida,
       BimComputo,
       BimMedicion,
+      BimMedicionDocumento,
       BimCertificacion,
       BimLineaCertificacion,
+      BimReconsideracion,
+      BimReconsideracionDocumento,
       BimRecurso,
     ]),
     BimAdminModule,

@@ -12,8 +12,11 @@ import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimComputo } from '../database/entities/bim/bim-computo.entity';
 import { BimMedicion } from '../database/entities/bim/bim-medicion.entity';
+import { BimMedicionDocumento } from '../database/entities/bim/bim-medicion-documento.entity';
 import { BimCertificacion } from '../database/entities/bim/bim-certificacion.entity';
 import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certificacion.entity';
+import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
+import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
 
 type CloseoutRow = {
@@ -42,13 +45,191 @@ export class ReportesService {
     private readonly computoRepo: Repository<BimComputo>,
     @InjectRepository(BimMedicion)
     private readonly medicionRepo: Repository<BimMedicion>,
+    @InjectRepository(BimMedicionDocumento)
+    private readonly medicionDocumentoRepo: Repository<BimMedicionDocumento>,
     @InjectRepository(BimCertificacion)
     private readonly certificacionRepo: Repository<BimCertificacion>,
     @InjectRepository(BimLineaCertificacion)
     private readonly lineaCertRepo: Repository<BimLineaCertificacion>,
+    @InjectRepository(BimReconsideracion)
+    private readonly reconsideracionRepo: Repository<BimReconsideracion>,
+    @InjectRepository(BimReconsideracionDocumento)
+    private readonly reconsideracionDocumentoRepo: Repository<BimReconsideracionDocumento>,
     @InjectRepository(BimRecurso)
     private readonly recursoRepo: Repository<BimRecurso>,
   ) {}
+
+  async getComparativo(
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string,
+  ) {
+    const obra = await this.obraRepo.findOne({ where: { id: obraId, tenant_id: tenantId } });
+    if (!obra) throw new NotFoundException('Obra no encontrada');
+
+    const presupuesto = await this.presupuestoRepo.findOne({
+      where: { id: presupuestoId, tenant_id: tenantId },
+    });
+    if (!presupuesto) throw new NotFoundException('Presupuesto no encontrado');
+
+    const capitulos = await this.capituloRepo.find({
+      where: { presupuesto_id: presupuesto.id },
+      order: { orden: 'ASC', id: 'ASC' },
+    });
+
+    const partidas = (
+      await Promise.all(
+        capitulos.map(async (capitulo) => {
+          const rows = await this.partidaRepo.find({
+            where: { capitulo_id: capitulo.id },
+            order: { orden: 'ASC', id: 'ASC' },
+          });
+          return rows.map((partida) => ({ partida, capitulo }));
+        }),
+      )
+    ).flat();
+
+    const computos = await this.computoRepo.find({ where: { obra_id: obraId, tenant_id: tenantId } });
+    const mediciones = await this.medicionRepo.find({ where: { obra_id: obraId, tenant_id: tenantId } });
+    const valuaciones = await this.lineaCertRepo
+      .createQueryBuilder('linea')
+      .innerJoin(BimCertificacion, 'cert', 'cert.id = linea.certificacion_id')
+      .where('cert.tenant_id = :tenantId', { tenantId })
+      .andWhere('cert.obra_id = :obraId', { obraId })
+      .getMany();
+    const reconsideraciones = await this.reconsideracionRepo
+      .createQueryBuilder('rec')
+      .innerJoin(BimReconsideracionDocumento, 'doc', 'doc.id = rec.documento_id')
+      .where('doc.tenant_id = :tenantId', { tenantId })
+      .andWhere('doc.obra_id = :obraId', { obraId })
+      .getMany();
+
+    const computosMap = new Map<string, number>();
+    const medicionesMap = new Map<string, number>();
+    const valuacionesMap = new Map<string, number>();
+    const extrasMap = new Map<string, number>();
+    const aumentosMap = new Map<string, number>();
+    const disminucionesMap = new Map<string, number>();
+
+    for (const item of computos) {
+      computosMap.set(String(item.partida_id), Number(item.resultado ?? 0));
+    }
+    for (const item of mediciones) {
+      medicionesMap.set(String(item.partida_id), Number(item.cantidad_acumulada ?? 0));
+    }
+    for (const item of valuaciones) {
+      valuacionesMap.set(String(item.partida_id), Number(item.cantidad_acumulada ?? 0));
+    }
+    for (const item of reconsideraciones) {
+      const partidaId = String(item.partida_id);
+      const cantidad = Math.abs(Number(item.cantidad_variacion ?? 0));
+      if (item.tipo === 'extra') extrasMap.set(partidaId, cantidad);
+      if (item.tipo === 'aumento') aumentosMap.set(partidaId, (aumentosMap.get(partidaId) ?? 0) + cantidad);
+      if (item.tipo === 'disminucion') disminucionesMap.set(partidaId, (disminucionesMap.get(partidaId) ?? 0) + cantidad);
+    }
+
+    const detalle = partidas.map(({ partida, capitulo }, index) => {
+      const baseCantidad = Number(partida.cantidad ?? 0);
+      const extras = extrasMap.get(String(partida.id)) ?? (partida.es_extra ? baseCantidad : 0);
+      const aumentos = aumentosMap.get(String(partida.id)) ?? 0;
+      const disminuciones = disminucionesMap.get(String(partida.id)) ?? 0;
+      const modificada = baseCantidad + extras + aumentos - disminuciones;
+      const computado = computosMap.get(String(partida.id)) ?? 0;
+      const medido = medicionesMap.get(String(partida.id)) ?? 0;
+      const valuado = valuacionesMap.get(String(partida.id)) ?? 0;
+      const precioUnitario = Number(partida.precio_unitario ?? 0);
+
+      return {
+        nro: index + 1,
+        capitulo: `${capitulo.codigo} · ${capitulo.nombre}`,
+        partida_id: partida.id,
+        codigo: partida.codigo,
+        descripcion: partida.descripcion,
+        unidad: partida.unidad,
+        precio_unitario: precioUnitario.toFixed(4),
+        presupuesto_original: baseCantidad.toFixed(4),
+        extras: extras.toFixed(4),
+        aumentos: aumentos.toFixed(4),
+        disminuciones: disminuciones.toFixed(4),
+        presupuesto_modificado: modificada.toFixed(4),
+        computado: computado.toFixed(4),
+        medido: medido.toFixed(4),
+        valuado: valuado.toFixed(4),
+        monto_original: (baseCantidad * precioUnitario).toFixed(2),
+        monto_modificado: (modificada * precioUnitario).toFixed(2),
+        monto_valuado: (valuado * precioUnitario).toFixed(2),
+      };
+    });
+
+    return {
+      obra,
+      presupuesto,
+      summary: {
+        original: this.sumBy(detalle, 'monto_original').toFixed(2),
+        modificado: this.sumBy(detalle, 'monto_modificado').toFixed(2),
+        valuado: this.sumBy(detalle, 'monto_valuado').toFixed(2),
+        computado: this.sumBy(detalle, 'computado').toFixed(4),
+        medido: this.sumBy(detalle, 'medido').toFixed(4),
+        cantidad_modificada: this.sumBy(detalle, 'presupuesto_modificado').toFixed(4),
+        variaciones: {
+          extras: this.sumBy(detalle, 'extras').toFixed(4),
+          aumentos: this.sumBy(detalle, 'aumentos').toFixed(4),
+          disminuciones: this.sumBy(detalle, 'disminuciones').toFixed(4),
+        },
+      },
+      detalle,
+    };
+  }
+
+  async getCierre(
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string,
+  ) {
+    const comparativo = await this.getComparativo(tenantId, obraId, presupuestoId);
+    const presupuesto = comparativo.presupuesto;
+    const obra = comparativo.obra;
+
+    const original = Number(comparativo.summary.original ?? 0);
+    const modificado = Number(comparativo.summary.modificado ?? 0);
+    const valuado = Number(comparativo.summary.valuado ?? 0);
+    const diferenciaEconomica = modificado - valuado;
+
+    const cantidadModificada = Number(comparativo.summary.cantidad_modificada ?? 0);
+    const medido = Number(comparativo.summary.medido ?? 0);
+    const diferenciaFisica = cantidadModificada - medido;
+
+    const estadoCierre =
+      Math.abs(diferenciaEconomica) < 0.01 && Math.abs(diferenciaFisica) < 0.0001
+        ? 'listo_para_cerrar'
+        : 'con_diferencias';
+
+    return {
+      obra: {
+        id: obra.id,
+        codigo: obra.codigo,
+        nombre: obra.nombre,
+        estado: obra.estado,
+        fecha_fin_real: obra.fecha_fin_real,
+      },
+      presupuesto: {
+        id: presupuesto.id,
+        nombre: presupuesto.nombre,
+        moneda: presupuesto.moneda,
+      },
+      resumen: {
+        original: comparativo.summary.original,
+        modificado: comparativo.summary.modificado,
+        valuado: comparativo.summary.valuado,
+        saldo_economico: diferenciaEconomica.toFixed(2),
+        cantidad_modificada: comparativo.summary.cantidad_modificada,
+        medido: comparativo.summary.medido,
+        saldo_fisico: diferenciaFisica.toFixed(4),
+        estado_cierre: estadoCierre,
+      },
+      detalle: comparativo.detalle,
+    };
+  }
 
   async generatePdf(
     type: string,
@@ -88,6 +269,8 @@ export class ReportesService {
       presupuesto: 'Reporte de Presupuesto',
       mediciones: 'Reporte de Mediciones',
       valuaciones: 'Reporte de Valuaciones',
+      comparativo: 'Reporte Comparativo',
+      modificado: 'Presupuesto Modificado',
       cierre: 'Cuadro de Cierre',
       insumos: 'Base de Insumos',
     };
@@ -129,6 +312,17 @@ export class ReportesService {
           obraId,
           presupuesto!.id,
           presupuesto!.moneda,
+        );
+        break;
+      case 'comparativo':
+      case 'modificado':
+        await this.renderComparativo(
+          doc,
+          tenantId,
+          obraId,
+          presupuesto!.id,
+          presupuesto!.moneda,
+          type as 'comparativo' | 'modificado',
         );
         break;
       case 'insumos':
@@ -432,18 +626,32 @@ export class ReportesService {
     tenantId: string,
     obraId: string,
   ) {
-    const mediciones = await this.medicionRepo.find({
+    const documentos = await this.medicionDocumentoRepo.find({
       where: { tenant_id: tenantId, obra_id: obraId },
-      relations: ['partida'],
-      order: { fecha_medicion: 'ASC', created_at: 'ASC' },
+      order: { numero: 'ASC', created_at: 'ASC' },
     });
 
     this.renderSectionTitle(doc, 'Histórico de Mediciones');
-    for (const medicion of mediciones) {
+    for (const documento of documentos) {
       this.line(
         doc,
-        `${new Date(medicion.fecha_medicion).toLocaleDateString('es-ES')} | ${medicion.partida?.codigo ?? ''} ${medicion.partida?.descripcion ?? ''} | Ant ${medicion.cantidad_anterior} | Act ${medicion.cantidad_actual} | Acum ${medicion.cantidad_acumulada} | Avance ${medicion.porcentaje_avance}%`,
+        `Medición #${documento.numero} | ${new Date(documento.fecha).toLocaleDateString('es-ES')} | ${documento.titulo} | Estado ${documento.status}`,
       );
+
+      const mediciones = await this.medicionRepo.find({
+        where: { documento_id: documento.id, tenant_id: tenantId },
+        relations: ['partida'],
+        order: { id: 'ASC' },
+      });
+
+      for (const medicion of mediciones) {
+        this.line(
+          doc,
+          `  ${medicion.partida?.codigo ?? ''} | ${medicion.partida?.descripcion ?? ''} | Ant ${medicion.cantidad_anterior} | Act ${medicion.cantidad_actual} | Acum ${medicion.cantidad_acumulada} | Avance ${medicion.porcentaje_avance}%`,
+        );
+      }
+
+      doc.moveDown(0.3);
     }
   }
 
@@ -464,6 +672,21 @@ export class ReportesService {
         doc,
         `Valuación #${valuacion.numero} | ${new Date(valuacion.periodo_desde).toLocaleDateString('es-ES')} - ${new Date(valuacion.periodo_hasta).toLocaleDateString('es-ES')} | ${valuacion.estado} | Actual ${this.formatCurrency(valuacion.total_cert_actual, currency)} | Acum ${this.formatCurrency(valuacion.total_cert_acumulado, currency)}`,
       );
+
+      const lineas = await this.lineaCertRepo.find({
+        where: { certificacion_id: valuacion.id },
+        relations: ['partida'],
+        order: { id: 'ASC' },
+      });
+
+      for (const linea of lineas) {
+        this.line(
+          doc,
+          `  ${linea.partida?.codigo ?? ''} | ${linea.partida?.descripcion ?? ''} | Act ${linea.cantidad_actual} | Acum ${linea.cantidad_acumulada} | Actual ${this.formatCurrency(linea.importe_actual, currency)} | Acum ${this.formatCurrency(linea.importe_acumulado, currency)}`,
+        );
+      }
+
+      doc.moveDown(0.3);
     }
   }
 
@@ -495,6 +718,36 @@ export class ReportesService {
       this.line(
         doc,
         `${recurso.codigo} | ${recurso.descripcion} | ${recurso.tipo} | ${recurso.unidad} | ${this.formatCurrency(recurso.precio)}`,
+      );
+    }
+  }
+
+  private async renderComparativo(
+    doc: PDFKit.PDFDocument,
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string,
+    currency: string,
+    type: 'comparativo' | 'modificado',
+  ) {
+    const data = await this.getComparativo(tenantId, obraId, presupuestoId);
+
+    this.renderSectionTitle(
+      doc,
+      type === 'modificado' ? 'Resumen de presupuesto modificado' : 'Resumen comparativo',
+    );
+    this.line(doc, `Original: ${this.formatCurrency(data.summary.original, currency)}`);
+    this.line(doc, `Modificado: ${this.formatCurrency(data.summary.modificado, currency)}`);
+    this.line(doc, `Valuado: ${this.formatCurrency(data.summary.valuado, currency)}`);
+    this.line(doc, `Extras: ${data.summary.variaciones.extras}`);
+    this.line(doc, `Aumentos: ${data.summary.variaciones.aumentos}`);
+    this.line(doc, `Disminuciones: ${data.summary.variaciones.disminuciones}`);
+    doc.moveDown(0.5);
+
+    for (const row of data.detalle) {
+      this.line(
+        doc,
+        `${row.codigo} | ${row.descripcion} | Ori ${row.presupuesto_original} | Mod ${row.presupuesto_modificado} | Comp ${row.computado} | Med ${row.medido} | Val ${row.valuado}`,
       );
     }
   }
@@ -576,5 +829,9 @@ export class ReportesService {
         montoValuado: valuadoByPartida.get(partida.id) ?? 0,
       };
     });
+  }
+
+  private sumBy<T extends Record<string, unknown>>(rows: T[], key: keyof T) {
+    return rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0);
   }
 }

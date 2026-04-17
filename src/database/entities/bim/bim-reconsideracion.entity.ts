@@ -64,6 +64,9 @@ export class BimReconsideracion {
   @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
   precio_unitario: string;
 
+  @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
+  precio_unitario_reconsiderado: string;
+
   @Column({ type: 'decimal', precision: 16, scale: 2, default: 0 })
   monto_variacion: string;
 

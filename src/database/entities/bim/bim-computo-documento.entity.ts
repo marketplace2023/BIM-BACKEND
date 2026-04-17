@@ -9,15 +9,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { BimObra } from './bim-obra.entity';
-import { BimCertificacion } from './bim-certificacion.entity';
 import { BimPresupuesto } from './bim-presupuesto.entity';
 import { ResUser } from '../identity/res-user.entity';
 
-@Entity('bim_reconsideracion_documentos')
-@Index('idx_bim_reconsideracion_docs_tenant', ['tenant_id'])
-@Index('idx_bim_reconsideracion_docs_obra', ['obra_id'])
-@Index('idx_bim_reconsideracion_docs_presupuesto', ['presupuesto_id'])
-export class BimReconsideracionDocumento {
+@Entity('bim_computo_documentos')
+@Index('idx_bim_computo_docs_tenant', ['tenant_id'])
+@Index('idx_bim_computo_docs_obra', ['obra_id'])
+@Index('idx_bim_computo_docs_presupuesto', ['presupuesto_id'])
+export class BimComputoDocumento {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
@@ -37,16 +36,6 @@ export class BimReconsideracionDocumento {
   @ManyToOne(() => BimPresupuesto, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'presupuesto_id' })
   presupuesto: BimPresupuesto;
-
-  @Column({ type: 'bigint', unsigned: true, nullable: true })
-  certificacion_id: string | null;
-
-  @ManyToOne(() => BimCertificacion, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'certificacion_id' })
-  certificacion: BimCertificacion | null;
-
-  @Column({ type: 'varchar', length: 30, default: 'aumento' })
-  tipo: string;
 
   @Column({ type: 'int', unsigned: true })
   numero: number;

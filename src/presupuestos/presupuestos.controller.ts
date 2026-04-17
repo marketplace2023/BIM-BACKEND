@@ -180,6 +180,11 @@ export class PresupuestosController {
     return this.presupuestosService.findPartidaMateriales(id, req.user.tenant_id, tipo);
   }
 
+  @Get('partidas/:id/desglose-pu')
+  getPartidaPriceBreakdown(@Param('id') id: string, @Request() req: any) {
+    return this.presupuestosService.getPartidaPriceBreakdown(id, req.user.tenant_id);
+  }
+
   @Post('partidas/:id/materiales')
   createPartidaMaterial(
     @Param('id') id: string,

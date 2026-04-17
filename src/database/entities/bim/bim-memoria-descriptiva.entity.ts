@@ -9,15 +9,15 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { BimObra } from './bim-obra.entity';
-import { BimCertificacion } from './bim-certificacion.entity';
+import { BimPartida } from './bim-partida.entity';
 import { BimPresupuesto } from './bim-presupuesto.entity';
 import { ResUser } from '../identity/res-user.entity';
 
-@Entity('bim_reconsideracion_documentos')
-@Index('idx_bim_reconsideracion_docs_tenant', ['tenant_id'])
-@Index('idx_bim_reconsideracion_docs_obra', ['obra_id'])
-@Index('idx_bim_reconsideracion_docs_presupuesto', ['presupuesto_id'])
-export class BimReconsideracionDocumento {
+@Entity('bim_memorias_descriptivas')
+@Index('idx_bim_memorias_tenant', ['tenant_id'])
+@Index('idx_bim_memorias_obra', ['obra_id'])
+@Index('idx_bim_memorias_presupuesto', ['presupuesto_id'])
+export class BimMemoriaDescriptiva {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
@@ -39,29 +39,23 @@ export class BimReconsideracionDocumento {
   presupuesto: BimPresupuesto;
 
   @Column({ type: 'bigint', unsigned: true, nullable: true })
-  certificacion_id: string | null;
+  partida_id: string | null;
 
-  @ManyToOne(() => BimCertificacion, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'certificacion_id' })
-  certificacion: BimCertificacion | null;
+  @ManyToOne(() => BimPartida, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'partida_id' })
+  partida: BimPartida | null;
 
-  @Column({ type: 'varchar', length: 30, default: 'aumento' })
+  @Column({ type: 'varchar', length: 40 })
   tipo: string;
-
-  @Column({ type: 'int', unsigned: true })
-  numero: number;
-
-  @Column({ type: 'date' })
-  fecha: string;
 
   @Column({ type: 'varchar', length: 220 })
   titulo: string;
 
+  @Column({ type: 'longtext' })
+  contenido: string;
+
   @Column({ type: 'varchar', length: 30, default: 'borrador' })
   status: string;
-
-  @Column({ type: 'text', nullable: true })
-  observaciones: string | null;
 
   @Column({ type: 'bigint', unsigned: true })
   created_by: string;
@@ -69,16 +63,6 @@ export class BimReconsideracionDocumento {
   @ManyToOne(() => ResUser, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'created_by' })
   creador: ResUser;
-
-  @Column({ type: 'bigint', unsigned: true, nullable: true })
-  approved_by: string | null;
-
-  @ManyToOne(() => ResUser, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'approved_by' })
-  aprobador: ResUser | null;
-
-  @Column({ type: 'datetime', nullable: true })
-  approved_at: Date | null;
 
   @CreateDateColumn({ type: 'datetime' })
   created_at: Date;

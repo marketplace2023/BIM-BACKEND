@@ -21,6 +21,7 @@ import { PreciosUnitariosModule } from './precios-unitarios/precios-unitarios.mo
 import { CertificacionesModule } from './certificaciones/certificaciones.module';
 import { MedicionesModule } from './mediciones/mediciones.module';
 import { ComputosModule } from './computos/computos.module';
+import { MemoriasModule } from './memorias/memorias.module';
 import { ReconsideracionesModule } from './reconsideraciones/reconsideraciones.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { BimAdminModule } from './bim-admin/bim-admin.module';
@@ -59,6 +60,7 @@ import { BimAdminModule } from './bim-admin/bim-admin.module';
     PresupuestosModule,
     PreciosUnitariosModule,
     ComputosModule,
+    MemoriasModule,
     MedicionesModule,
     ReconsideracionesModule,
     CertificacionesModule,

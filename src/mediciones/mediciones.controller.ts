@@ -6,12 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
-import { CreateMedicionDto } from './dto/create-medicion.dto';
-import { UpdateMedicionDto } from './dto/update-medicion.dto';
+import { ChangeDocumentStatusDto } from '../common/dto/change-document-status.dto';
+import { CreateMedicionDocumentoDto } from './dto/create-medicion-documento.dto';
+import { UpdateMedicionDocumentoDto } from './dto/update-medicion-documento.dto';
+import { SaveMedicionDetallesDto } from './dto/save-medicion-detalles.dto';
 import { MedicionesService } from './mediciones.service';
 
 @UseGuards(BimJwtGuard)
@@ -19,41 +22,77 @@ import { MedicionesService } from './mediciones.service';
 export class MedicionesController {
   constructor(private readonly medicionesService: MedicionesService) {}
 
-  @Post()
-  create(@Body() dto: CreateMedicionDto, @Request() req: any) {
-    return this.medicionesService.create(
+  @Get('obra/:obraId')
+  findByObra(
+    @Param('obraId') obraId: string,
+    @Query('presupuestoId') presupuestoId: string | undefined,
+    @Request() req: any,
+  ) {
+    return this.medicionesService.findByObra(
+      obraId,
+      req.user.tenant_id,
+      presupuestoId,
+    );
+  }
+
+  @Post('documentos')
+  createDocumento(@Body() dto: CreateMedicionDocumentoDto, @Request() req: any) {
+    return this.medicionesService.createDocumento(
       dto,
       req.user.platform_user_id ?? req.user.id,
       req.user.tenant_id,
     );
   }
 
-  @Get('obra/:obraId')
-  findByObra(@Param('obraId') obraId: string, @Request() req: any) {
-    return this.medicionesService.findByObra(obraId, req.user.tenant_id);
+  @Get('documentos/:id')
+  findDocumento(@Param('id') id: string, @Request() req: any) {
+    return this.medicionesService.findDocumento(id, req.user.tenant_id);
   }
 
-  @Get('partida/:partidaId')
-  findByPartida(@Param('partidaId') partidaId: string, @Request() req: any) {
-    return this.medicionesService.findByPartida(partidaId, req.user.tenant_id);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string, @Request() req: any) {
-    return this.medicionesService.findOne(id, req.user.tenant_id);
-  }
-
-  @Patch(':id')
-  update(
+  @Patch('documentos/:id')
+  updateDocumento(
     @Param('id') id: string,
-    @Body() dto: UpdateMedicionDto,
+    @Body() dto: UpdateMedicionDocumentoDto,
     @Request() req: any,
   ) {
-    return this.medicionesService.update(id, req.user.tenant_id, dto);
+    return this.medicionesService.updateDocumento(id, req.user.tenant_id, dto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string, @Request() req: any) {
-    return this.medicionesService.remove(id, req.user.tenant_id);
+  @Delete('documentos/:id')
+  removeDocumento(@Param('id') id: string, @Request() req: any) {
+    return this.medicionesService.removeDocumento(id, req.user.tenant_id);
+  }
+
+  @Get('documentos/:id/resumen')
+  getDocumentoResumen(@Param('id') id: string, @Request() req: any) {
+    return this.medicionesService.getDocumentoResumen(id, req.user.tenant_id);
+  }
+
+  @Patch('documentos/:id/detalles')
+  saveDocumentoDetalles(
+    @Param('id') id: string,
+    @Body() dto: SaveMedicionDetallesDto,
+    @Request() req: any,
+  ) {
+    return this.medicionesService.saveDocumentoDetalles(
+      id,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+      dto,
+    );
+  }
+
+  @Patch('documentos/:id/status')
+  changeStatus(
+    @Param('id') id: string,
+    @Body() dto: ChangeDocumentStatusDto,
+    @Request() req: any,
+  ) {
+    return this.medicionesService.changeStatus(
+      id,
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 }

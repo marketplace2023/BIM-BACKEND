@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -16,6 +17,8 @@ import {
   CreateCertificacionDto,
   AprobarCertificacionDto,
 } from './dto/create-certificacion.dto';
+import { SaveCertificacionDetallesDto } from './dto/save-certificacion-detalles.dto';
+import { UpdateCertificacionDto } from './dto/update-certificacion.dto';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
 
 @UseGuards(BimJwtGuard)
@@ -33,13 +36,44 @@ export class CertificacionesController {
   }
 
   @Get('obra/:obraId')
-  findByObra(@Param('obraId') obraId: string, @Request() req: any) {
-    return this.service.findByObra(obraId, req.user.tenant_id);
+  findByObra(
+    @Param('obraId') obraId: string,
+    @Request() req: any,
+    @Query('presupuestoId') presupuestoId?: string,
+  ) {
+    return this.service.findByObra(
+      obraId,
+      req.user.tenant_id,
+      presupuestoId,
+    );
+  }
+
+  @Get(':id/resumen')
+  getResumen(@Param('id') id: string, @Request() req: any) {
+    return this.service.getResumen(id, req.user.tenant_id);
   }
 
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.service.findOne(id, req.user.tenant_id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCertificacionDto,
+    @Request() req: any,
+  ) {
+    return this.service.update(id, req.user.tenant_id, dto);
+  }
+
+  @Patch(':id/detalles')
+  saveDetalles(
+    @Param('id') id: string,
+    @Body() dto: SaveCertificacionDetallesDto,
+    @Request() req: any,
+  ) {
+    return this.service.saveDetalles(id, req.user.tenant_id, dto);
   }
 
   @Patch(':id/estado')

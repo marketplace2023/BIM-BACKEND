@@ -50,6 +50,15 @@ export class ObrasController {
     return this.obrasService.update(id, req.user.tenant_id, dto);
   }
 
+  @Patch(':id/cerrar')
+  cerrarObra(
+    @Param('id') id: string,
+    @Query('presupuestoId') presupuestoId: string,
+    @Request() req: any,
+  ) {
+    return this.obrasService.cerrarObra(id, presupuestoId, req.user.tenant_id);
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Request() req: any) {

@@ -59,6 +59,9 @@ export class BimPartida {
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  es_extra: number;
+
   @Column({ type: 'smallint', default: 0 })
   orden: number;
 

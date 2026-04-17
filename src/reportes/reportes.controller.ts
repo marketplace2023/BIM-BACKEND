@@ -15,6 +15,32 @@ import { ReportesService } from './reportes.service';
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 
+  @Get('comparativo')
+  getComparativo(
+    @Query('obraId') obraId: string,
+    @Query('presupuestoId') presupuestoId: string,
+    @Request() req: any,
+  ) {
+    return this.reportesService.getComparativo(
+      req.user.tenant_id,
+      obraId,
+      presupuestoId,
+    );
+  }
+
+  @Get('cierre')
+  getCierre(
+    @Query('obraId') obraId: string,
+    @Query('presupuestoId') presupuestoId: string,
+    @Request() req: any,
+  ) {
+    return this.reportesService.getCierre(
+      req.user.tenant_id,
+      obraId,
+      presupuestoId,
+    );
+  }
+
   @Get('pdf')
   async generatePdf(
     @Query('type') type: string,

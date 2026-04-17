@@ -37,6 +37,9 @@ export class CreatePartidaDto {
   observaciones?: string;
 
   @IsOptional()
+  es_extra?: number;
+
+  @IsOptional()
   orden?: number;
 }
 

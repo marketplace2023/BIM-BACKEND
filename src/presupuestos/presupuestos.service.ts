@@ -12,7 +12,13 @@ import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimPartidaMaterial } from '../database/entities/bim/bim-partida-material.entity';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import { BimApuDescomposicion } from '../database/entities/bim/bim-apu-descomposicion.entity';
+import { BimCertificacion } from '../database/entities/bim/bim-certificacion.entity';
+import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certificacion.entity';
+import { BimMedicion } from '../database/entities/bim/bim-medicion.entity';
+import { BimMedicionDocumento } from '../database/entities/bim/bim-medicion-documento.entity';
 import { BimPrecioUnitario } from '../database/entities/bim/bim-precio-unitario.entity';
+import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
+import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
 import {
   CreatePresupuestoDto,
@@ -27,6 +33,36 @@ import {
   UpdatePartidaMaterialDto,
 } from './dto/update-presupuesto.dto';
 
+type ProjectAwareUnitPriceBreakdown = {
+  costo_directo: number;
+  costo_materiales: number;
+  costo_equipos: number;
+  costo_mano_obra: number;
+  costo_otros: number;
+  base_labor: number;
+  labor_factor: number;
+  gastos_medicos: number;
+  subtotal_directo_ajustado: number;
+  administracion_pct: number;
+  utilidad_pct: number;
+  financiamiento_pct: number;
+  iva_pct: number;
+  iva_modo: string;
+  base_iva: number;
+  financiamiento_incluye_utilidad: boolean;
+  total_sin_iva: number;
+  iva_monto: number;
+  total_final: number;
+};
+
+type PartidaDirectCostBreakdown = {
+  total: number;
+  materiales: number;
+  equipos: number;
+  mano_obra: number;
+  otros: number;
+};
+
 @Injectable()
 export class PresupuestosService {
   constructor(
@@ -38,6 +74,18 @@ export class PresupuestosService {
     private readonly partidaRepo: Repository<BimPartida>,
     @InjectRepository(BimPartidaMaterial)
     private readonly partidaMaterialRepo: Repository<BimPartidaMaterial>,
+    @InjectRepository(BimMedicion)
+    private readonly medicionRepo: Repository<BimMedicion>,
+    @InjectRepository(BimMedicionDocumento)
+    private readonly medicionDocumentoRepo: Repository<BimMedicionDocumento>,
+    @InjectRepository(BimCertificacion)
+    private readonly certificacionRepo: Repository<BimCertificacion>,
+    @InjectRepository(BimLineaCertificacion)
+    private readonly lineaCertRepo: Repository<BimLineaCertificacion>,
+    @InjectRepository(BimReconsideracion)
+    private readonly reconsideracionRepo: Repository<BimReconsideracion>,
+    @InjectRepository(BimReconsideracionDocumento)
+    private readonly reconsideracionDocumentoRepo: Repository<BimReconsideracionDocumento>,
     @InjectRepository(BimRecurso)
     private readonly recursoRepo: Repository<BimRecurso>,
     @InjectRepository(BimObra)
@@ -213,6 +261,7 @@ export class PresupuestosService {
     dto: UpdatePresupuestoDto,
   ): Promise<BimPresupuesto> {
     const p = await this.findOne(id, tenantId);
+    await this.assertPresupuestoEditable(p.id, tenantId);
     if (p.estado === 'cerrado') {
       throw new BadRequestException(
         'No se puede editar un presupuesto cerrado',
@@ -258,6 +307,7 @@ export class PresupuestosService {
 
   async remove(id: string, tenantId: string): Promise<void> {
     const p = await this.findOne(id, tenantId);
+    await this.assertPresupuestoEditable(p.id, tenantId);
     if (p.estado === 'aprobado') {
       throw new BadRequestException(
         'No se puede eliminar un presupuesto aprobado',
@@ -273,6 +323,7 @@ export class PresupuestosService {
     dto: CreateCapituloDto,
   ): Promise<BimCapitulo> {
     await this.findOne(presupuestoId, tenantId);
+    await this.assertPresupuestoEditable(presupuestoId, tenantId);
     const cap = this.capituloRepo.create({
       presupuesto_id: presupuestoId,
       ...dto,
@@ -287,6 +338,7 @@ export class PresupuestosService {
   ): Promise<BimCapitulo> {
     const cap = await this.findCapitulo(id, tenantId);
     if (!cap) throw new NotFoundException(`Capítulo #${id} no encontrado`);
+    await this.assertPresupuestoEditable(cap.presupuesto_id, tenantId);
     Object.assign(cap, dto);
     return this.capituloRepo.save(cap);
   }
@@ -294,6 +346,7 @@ export class PresupuestosService {
   async removeCapitulo(id: string, tenantId: string): Promise<void> {
     const cap = await this.findCapitulo(id, tenantId);
     if (!cap) throw new NotFoundException(`Capítulo #${id} no encontrado`);
+    await this.assertPresupuestoEditable(cap.presupuesto_id, tenantId);
     await this.capituloRepo.remove(cap);
   }
 
@@ -306,6 +359,7 @@ export class PresupuestosService {
     const cap = await this.findCapitulo(capituloId, tenantId);
     if (!cap)
       throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
+    await this.assertPresupuestoEditable(cap.presupuesto_id, tenantId);
     return this.dataSource.transaction(async (manager) => {
       const partida = manager.create(BimPartida, {
         capitulo_id: capituloId,
@@ -335,6 +389,12 @@ export class PresupuestosService {
   ): Promise<BimPartida> {
     return this.dataSource.transaction(async (manager) => {
       const partida = await this.findPartida(id, tenantId, manager);
+      if (!partida.es_extra) {
+        const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+        await this.assertPresupuestoEditable(capitulo.presupuesto_id, tenantId);
+      } else {
+        await this.assertPartidaEditable(partida.id, tenantId);
+      }
       Object.assign(partida, dto);
       const saved = await manager.save(BimPartida, partida);
       await this.recalcularTotalByCapitulo(saved.capitulo_id, tenantId, manager);
@@ -347,6 +407,12 @@ export class PresupuestosService {
       const partida = await this.findPartida(id, tenantId, manager);
       if (!partida) {
         throw new NotFoundException(`Partida #${id} no encontrada`);
+      }
+      if (!partida.es_extra) {
+        const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+        await this.assertPresupuestoEditable(capitulo.presupuesto_id, tenantId);
+      } else {
+        await this.assertPartidaEditable(partida.id, tenantId);
       }
       const capituloId = partida.capitulo_id;
       await manager.remove(BimPartida, partida);
@@ -368,6 +434,62 @@ export class PresupuestosService {
     });
   }
 
+  async getPartidaPriceBreakdown(id: string, tenantId: string) {
+    const partida = await this.findPartida(id, tenantId);
+    const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId);
+    const presupuesto = await this.findOne(capitulo.presupuesto_id, tenantId);
+    const obra = await this.findTenantObra(presupuesto.obra_id, tenantId);
+
+    const costoDirecto = await this.getPartidaDirectCostBreakdown(partida.id, this.partidaMaterialRepo);
+    const breakdown = this.calculateProjectAwareUnitPriceBreakdown(costoDirecto, partida, presupuesto, obra);
+
+    return {
+      partida_id: partida.id,
+      codigo: partida.codigo,
+      descripcion: partida.descripcion,
+      breakdown: {
+        ...breakdown,
+        costo_directo: breakdown.costo_directo.toFixed(4),
+        costo_materiales: breakdown.costo_materiales.toFixed(4),
+        costo_equipos: breakdown.costo_equipos.toFixed(4),
+        costo_mano_obra: breakdown.costo_mano_obra.toFixed(4),
+        costo_otros: breakdown.costo_otros.toFixed(4),
+        base_labor: breakdown.base_labor.toFixed(4),
+        labor_factor: breakdown.labor_factor.toFixed(4),
+        gastos_medicos: breakdown.gastos_medicos.toFixed(4),
+        subtotal_directo_ajustado: breakdown.subtotal_directo_ajustado.toFixed(4),
+        administracion_pct: breakdown.administracion_pct.toFixed(2),
+        utilidad_pct: breakdown.utilidad_pct.toFixed(2),
+        financiamiento_pct: breakdown.financiamiento_pct.toFixed(2),
+        iva_pct: breakdown.iva_pct.toFixed(2),
+        base_iva: breakdown.base_iva.toFixed(4),
+        total_sin_iva: breakdown.total_sin_iva.toFixed(4),
+        iva_monto: breakdown.iva_monto.toFixed(4),
+        total_final: breakdown.total_final.toFixed(4),
+      },
+    };
+  }
+
+  async recalcularPartidasConApuPorPresupuesto(
+    presupuestoId: string,
+    tenantId: string,
+  ) {
+    const arbol = await this.findWithTree(presupuestoId, tenantId);
+
+    await this.dataSource.transaction(async (manager) => {
+      for (const capitulo of arbol.capitulos ?? []) {
+        for (const partida of capitulo.partidas ?? []) {
+          if (partida.precio_unitario_id) {
+            await this.recalcularPrecioUnitarioPartida(partida.id, tenantId, manager);
+          }
+        }
+      }
+      await this.recalcularTotal(presupuestoId, tenantId, manager);
+    });
+
+    return this.findOne(presupuestoId, tenantId);
+  }
+
   async createPartidaMaterial(
     partidaId: string,
     tenantId: string,
@@ -375,6 +497,12 @@ export class PresupuestosService {
   ): Promise<BimPartidaMaterial> {
     return this.dataSource.transaction(async (manager) => {
       const partida = await this.findPartida(partidaId, tenantId, manager);
+      if (!partida.es_extra) {
+        const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+        await this.assertPresupuestoEditable(capitulo.presupuesto_id, tenantId);
+      } else {
+        await this.assertPartidaEditable(partida.id, tenantId);
+      }
       const recurso = dto.recurso_id
         ? await this.findAccessibleRecurso(dto.recurso_id, tenantId, manager)
         : null;
@@ -404,13 +532,19 @@ export class PresupuestosService {
   ): Promise<BimPartidaMaterial> {
     return this.dataSource.transaction(async (manager) => {
       const item = await this.findPartidaMaterial(id, tenantId, manager);
+      const partida = await this.findPartida(item.partida_id, tenantId, manager);
+      if (!partida.es_extra) {
+        const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+        await this.assertPresupuestoEditable(capitulo.presupuesto_id, tenantId);
+      } else {
+        await this.assertPartidaEditable(partida.id, tenantId);
+      }
       if (dto.recurso_id) {
         const recurso = await this.findAccessibleRecurso(dto.recurso_id, tenantId, manager);
         item.recurso_id = recurso.id;
       }
       Object.assign(item, dto);
       const saved = await manager.save(BimPartidaMaterial, item);
-      const partida = await this.findPartida(item.partida_id, tenantId, manager);
       await this.recalcularPrecioUnitarioPartida(item.partida_id, tenantId, manager);
       await this.recalcularTotalByCapitulo(partida.capitulo_id, tenantId, manager);
       return saved;
@@ -422,6 +556,12 @@ export class PresupuestosService {
       const item = await this.findPartidaMaterial(id, tenantId, manager);
       const partidaId = item.partida_id;
       const partida = await this.findPartida(partidaId, tenantId, manager);
+      if (!partida.es_extra) {
+        const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+        await this.assertPresupuestoEditable(capitulo.presupuesto_id, tenantId);
+      } else {
+        await this.assertPartidaEditable(partida.id, tenantId);
+      }
       await manager.remove(BimPartidaMaterial, item);
       await this.recalcularPrecioUnitarioPartida(partidaId, tenantId, manager);
       await this.recalcularTotalByCapitulo(partida.capitulo_id, tenantId, manager);
@@ -455,14 +595,7 @@ export class PresupuestosService {
       throw new NotFoundException(`Presupuesto #${presupuestoId} no encontrado`);
     }
 
-    const gi = parseFloat(presupuesto.gastos_indirectos_pct) / 100;
-    const ben = parseFloat(presupuesto.beneficio_pct) / 100;
-    const iva = parseFloat(presupuesto.iva_pct) / 100;
-
-    const costeDirecto = totalPartidas;
-    const total = costeDirecto * (1 + gi + ben) * (1 + iva);
-
-    presupuesto.total_presupuesto = total.toFixed(2);
+    presupuesto.total_presupuesto = totalPartidas.toFixed(2);
     return presupuestoRepo.save(presupuesto);
   }
 
@@ -608,16 +741,183 @@ export class PresupuestosService {
       : this.partidaMaterialRepo;
     const partidaRepo = manager ? manager.getRepository(BimPartida) : this.partidaRepo;
 
-    const result = await materialRepo
+    const partida = await this.findPartida(partidaId, tenantId, manager);
+    const capitulo = await this.findCapitulo(partida.capitulo_id, tenantId, manager);
+    const presupuestoRepo = manager ? manager.getRepository(BimPresupuesto) : this.presupuestoRepo;
+    const obraRepo = manager ? manager.getRepository(BimObra) : this.obraRepo;
+    const presupuesto = await presupuestoRepo.findOne({ where: { id: capitulo.presupuesto_id, tenant_id: tenantId } });
+    const obra = presupuesto ? await obraRepo.findOne({ where: { id: presupuesto.obra_id, tenant_id: tenantId } }) : null;
+
+    const costoDirecto = await this.getPartidaDirectCostBreakdown(partidaId, materialRepo);
+    const breakdown = this.calculateProjectAwareUnitPriceBreakdown(costoDirecto, partida, presupuesto, obra);
+    partida.precio_unitario = breakdown.total_final.toFixed(4);
+    await partidaRepo.save(partida);
+  }
+
+  private async getPartidaDirectCostBreakdown(
+    partidaId: string,
+    materialRepo: Repository<BimPartidaMaterial>,
+  ): Promise<PartidaDirectCostBreakdown> {
+    const rows = await materialRepo
       .createQueryBuilder('material')
       .where('material.partida_id = :partidaId', { partidaId })
-      .select('SUM(material.total)', 'total')
-      .getRawOne();
+      .select('material.tipo', 'tipo')
+      .addSelect('SUM(material.total)', 'total')
+      .groupBy('material.tipo')
+      .getRawMany<{ tipo?: string | null; total?: string | null }>();
 
-    const partida = await this.findPartida(partidaId, tenantId, manager);
-    partida.precio_unitario =
-      (parseFloat((result as { total?: string | null } | null)?.total ?? '0') || 0).toFixed(4);
-    await partidaRepo.save(partida);
+    const breakdown: PartidaDirectCostBreakdown = {
+      total: 0,
+      materiales: 0,
+      equipos: 0,
+      mano_obra: 0,
+      otros: 0,
+    };
+
+    for (const row of rows) {
+      const total = parseFloat(row.total ?? '0') || 0;
+      breakdown.total += total;
+
+      switch (row.tipo) {
+        case 'material':
+          breakdown.materiales += total;
+          break;
+        case 'equipo':
+          breakdown.equipos += total;
+          break;
+        case 'mano_obra':
+          breakdown.mano_obra += total;
+          break;
+        default:
+          breakdown.otros += total;
+          break;
+      }
+    }
+
+    return breakdown;
+  }
+
+  private calculateProjectAwareUnitPriceBreakdown(
+    costoDirecto: PartidaDirectCostBreakdown,
+    partida: BimPartida,
+    presupuesto: BimPresupuesto | null,
+    obra: BimObra | null,
+  ): ProjectAwareUnitPriceBreakdown {
+    const costoMateriales = costoDirecto.materiales;
+    const costoEquipos = costoDirecto.equipos;
+    const costoManoObra = costoDirecto.mano_obra;
+    const costoOtros = costoDirecto.otros;
+    const costoDirectoTotal = costoDirecto.total;
+
+    if (!partida.precio_unitario_id || !presupuesto || !obra) {
+      return {
+        costo_directo: costoDirectoTotal,
+        costo_materiales: costoMateriales,
+        costo_equipos: costoEquipos,
+        costo_mano_obra: costoManoObra,
+        costo_otros: costoOtros,
+        base_labor: 0,
+        labor_factor: 0,
+        gastos_medicos: 0,
+        subtotal_directo_ajustado: costoDirectoTotal,
+        administracion_pct: 0,
+        utilidad_pct: 0,
+        financiamiento_pct: 0,
+        iva_pct: 0,
+        iva_modo: 'sin_iva',
+        base_iva: 0,
+        financiamiento_incluye_utilidad: false,
+        total_sin_iva: costoDirectoTotal,
+        iva_monto: 0,
+        total_final: costoDirectoTotal,
+      };
+    }
+
+    const meta = (obra.meta_json ?? {}) as {
+      iva?: { modo?: string | null; porcentaje?: number | string | null };
+      costos_indirectos?: {
+        administracion_pct?: number | string | null;
+        utilidad_pct?: number | string | null;
+        financiamiento_pct?: number | string | null;
+        financiamiento_incluye_utilidad?: boolean;
+      };
+      costos_salario?: {
+        aplicar_doble_factor?: boolean;
+        factor_labor_directa?: number | string | null;
+      };
+      otros_factores?: {
+        usar_gastos_medicos?: boolean;
+      };
+    };
+
+    const ivaModo = meta.iva?.modo ?? 'presupuesto_y_valuacion';
+    const ivaPct = this.toNumber(meta.iva?.porcentaje ?? presupuesto.iva_pct) / 100;
+    const administracionPct = this.toNumber(meta.costos_indirectos?.administracion_pct ?? presupuesto.gastos_indirectos_pct) / 100;
+    const utilidadPct = this.toNumber(meta.costos_indirectos?.utilidad_pct ?? presupuesto.beneficio_pct) / 100;
+    const financiamientoPct = this.toNumber(meta.costos_indirectos?.financiamiento_pct ?? '0') / 100;
+    const financiamientoIncluyeUtilidad = Boolean(meta.costos_indirectos?.financiamiento_incluye_utilidad);
+    const factorLaborDirecta = this.toNumber(meta.costos_salario?.factor_labor_directa ?? '0') / 100;
+    const aplicarDobleFactor = Boolean(meta.costos_salario?.aplicar_doble_factor);
+    const usarGastosMedicos = Boolean(meta.otros_factores?.usar_gastos_medicos);
+
+    const baseLabor = factorLaborDirecta > 0 ? costoDirectoTotal * factorLaborDirecta : 0;
+    const laborFactor = aplicarDobleFactor ? baseLabor * 2 : baseLabor;
+    const gastosMedicos = usarGastosMedicos ? costoDirectoTotal * 0.01 : 0;
+    const subtotalMateriales = costoMateriales;
+    const subtotalEquipos = costoEquipos;
+    const subtotalManoObra = costoManoObra + laborFactor + gastosMedicos;
+    const subtotalOtros = costoOtros;
+    const subtotalDirectoAjustado =
+      subtotalMateriales + subtotalEquipos + subtotalManoObra + subtotalOtros;
+
+    const aplicarCargosProyecto = (base: number) => {
+      const baseConIndirectos = base * (1 + administracionPct + utilidadPct);
+      const financiamientoBase = financiamientoIncluyeUtilidad
+        ? base * (1 + administracionPct + utilidadPct)
+        : base * (1 + administracionPct);
+      return baseConIndirectos + financiamientoBase * financiamientoPct;
+    };
+
+    const totalSinIva = aplicarCargosProyecto(subtotalDirectoAjustado);
+
+    let baseIvaDirecta = subtotalDirectoAjustado;
+    if (ivaModo === 'sin_iva' || ivaModo === 'solo_valuacion') {
+      baseIvaDirecta = 0;
+    } else if (ivaModo === 'materiales') {
+      baseIvaDirecta = subtotalMateriales;
+    } else if (ivaModo === 'materiales_equipos') {
+      baseIvaDirecta = subtotalMateriales + subtotalEquipos;
+    }
+
+    const baseIva = aplicarCargosProyecto(baseIvaDirecta);
+    const ivaMonto = baseIva * ivaPct;
+    const totalFinal = totalSinIva + ivaMonto;
+
+    return {
+      costo_directo: costoDirectoTotal,
+      costo_materiales: costoMateriales,
+      costo_equipos: costoEquipos,
+      costo_mano_obra: costoManoObra,
+      costo_otros: costoOtros,
+      base_labor: baseLabor,
+      labor_factor: laborFactor,
+      gastos_medicos: gastosMedicos,
+      subtotal_directo_ajustado: subtotalDirectoAjustado,
+      administracion_pct: administracionPct * 100,
+      utilidad_pct: utilidadPct * 100,
+      financiamiento_pct: financiamientoPct * 100,
+      iva_pct: ivaPct * 100,
+      iva_modo: ivaModo,
+      base_iva: baseIva,
+      financiamiento_incluye_utilidad: financiamientoIncluyeUtilidad,
+      total_sin_iva: totalSinIva,
+      iva_monto: ivaMonto,
+      total_final: totalFinal,
+    };
+  }
+
+  private toNumber(value: string | number | null | undefined) {
+    return Number.parseFloat(String(value ?? '0')) || 0;
   }
 
   private async recalcularTotalByCapitulo(
@@ -631,6 +931,52 @@ export class PresupuestosService {
       throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
     }
     return this.recalcularTotal(capitulo.presupuesto_id, tenantId, manager);
+  }
+
+  private async assertPresupuestoEditable(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [mediciones, valuaciones, reconsideraciones] = await Promise.all([
+      this.medicionDocumentoRepo.count({
+        where: { tenant_id: tenantId, presupuesto_id: presupuestoId },
+      }),
+      this.certificacionRepo.count({
+        where: { tenant_id: tenantId, presupuesto_id: presupuestoId },
+      }),
+      this.reconsideracionDocumentoRepo.count({
+        where: { tenant_id: tenantId, presupuesto_id: presupuestoId },
+      }),
+    ]);
+
+    if (mediciones > 0 || valuaciones > 0 || reconsideraciones > 0) {
+      throw new BadRequestException(
+        'El presupuesto está protegido por historial operativo. Usa módulos formales como extras, aumentos, disminuciones o reconsideraciones.',
+      );
+    }
+  }
+
+  private async assertPartidaEditable(
+    partidaId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [mediciones, valuaciones, reconsideraciones] = await Promise.all([
+      this.medicionRepo.count({
+        where: { tenant_id: tenantId, partida_id: partidaId },
+      }),
+      this.lineaCertRepo.count({
+        where: { partida_id: partidaId },
+      }),
+      this.reconsideracionRepo.count({
+        where: { tenant_id: tenantId, partida_id: partidaId },
+      }),
+    ]);
+
+    if (mediciones > 0 || valuaciones > 0 || reconsideraciones > 0) {
+      throw new BadRequestException(
+        'La partida ya tiene historial operativo y no puede editarse libremente.',
+      );
+    }
   }
 
   private renderPdfHeader(

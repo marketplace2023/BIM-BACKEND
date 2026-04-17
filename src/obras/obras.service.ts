@@ -2,18 +2,26 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
+import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { CreateObraDto } from './dto/create-obra.dto';
 import { UpdateObraDto } from './dto/update-obra.dto';
+import { ReportesService } from '../reportes/reportes.service';
+import { PresupuestosService } from '../presupuestos/presupuestos.service';
 
 @Injectable()
 export class ObrasService {
   constructor(
     @InjectRepository(BimObra)
     private readonly obrasRepo: Repository<BimObra>,
+    @InjectRepository(BimPresupuesto)
+    private readonly presupuestosRepo: Repository<BimPresupuesto>,
+    private readonly reportesService: ReportesService,
+    private readonly presupuestosService: PresupuestosService,
   ) {}
 
   async create(
@@ -65,6 +73,7 @@ export class ObrasService {
     dto: UpdateObraDto,
   ): Promise<BimObra> {
     const obra = await this.findOne(id, tenantId);
+    const prevMeta = JSON.stringify(obra.meta_json ?? {});
 
     if (dto.codigo && dto.codigo !== obra.codigo) {
       const duplicate = await this.findAnyByCodigo(dto.codigo, tenantId);
@@ -76,12 +85,44 @@ export class ObrasService {
     }
 
     Object.assign(obra, dto);
-    return this.obrasRepo.save(obra);
+    const saved = await this.obrasRepo.save(obra);
+
+    const nextMeta = JSON.stringify(saved.meta_json ?? {});
+    if (prevMeta !== nextMeta) {
+      const presupuestos = await this.findObraPresupuestos(saved.id, tenantId);
+      for (const presupuesto of presupuestos) {
+        await this.presupuestosService.recalcularPartidasConApuPorPresupuesto(
+          presupuesto.id,
+          tenantId,
+        );
+      }
+    }
+
+    return saved;
   }
 
   async remove(id: string, tenantId: string): Promise<void> {
     const obra = await this.findOne(id, tenantId);
     await this.obrasRepo.softRemove(obra);
+  }
+
+  async cerrarObra(
+    id: string,
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<BimObra> {
+    const obra = await this.findOne(id, tenantId);
+    const cierre = await this.reportesService.getCierre(tenantId, id, presupuestoId);
+
+    if (cierre.resumen.estado_cierre !== 'listo_para_cerrar') {
+      throw new BadRequestException(
+        'La obra no puede cerrarse todavía porque existen diferencias físicas o económicas.',
+      );
+    }
+
+    obra.estado = 'finalizada';
+    obra.fecha_fin_real = new Date() as unknown as Date;
+    return this.obrasRepo.save(obra);
   }
 
   private async generateCodigo(tenantId: string) {
@@ -111,5 +152,11 @@ export class ObrasService {
       .where('obra.tenant_id = :tenantId', { tenantId })
       .andWhere('obra.codigo = :codigo', { codigo })
       .getOne();
+  }
+
+  private findObraPresupuestos(obraId: string, tenantId: string) {
+    return this.presupuestosRepo.find({
+      where: { obra_id: obraId, tenant_id: tenantId },
+    });
   }
 }

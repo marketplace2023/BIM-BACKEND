@@ -9,12 +9,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { BimObra } from './bim-obra.entity';
+import { BimComputoDocumento } from './bim-computo-documento.entity';
 import { BimPartida } from './bim-partida.entity';
 import { ResUser } from '../identity/res-user.entity';
 
 @Entity('bim_computos')
 @Index('idx_bim_computos_tenant', ['tenant_id'])
 @Index('idx_bim_computos_obra', ['obra_id'])
+@Index('idx_bim_computos_documento', ['documento_id'])
 @Index('idx_bim_computos_partida', ['partida_id'])
 export class BimComputo {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
@@ -29,6 +31,13 @@ export class BimComputo {
   @ManyToOne(() => BimObra, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'obra_id' })
   obra: BimObra;
+
+  @Column({ type: 'bigint', unsigned: true })
+  documento_id: string;
+
+  @ManyToOne(() => BimComputoDocumento, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'documento_id' })
+  documento: BimComputoDocumento;
 
   @Column({ type: 'bigint', unsigned: true })
   partida_id: string;

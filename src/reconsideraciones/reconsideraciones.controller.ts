@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { BimJwtGuard } from '../common/guards/bim-jwt.guard';
+import { ChangeDocumentStatusDto } from '../common/dto/change-document-status.dto';
 import { CreateReconsideracionDocumentoDto } from './dto/create-reconsideracion-documento.dto';
 import { UpdateReconsideracionDocumentoDto } from './dto/update-reconsideracion-documento.dto';
 import { SaveReconsideracionDetallesDto } from './dto/save-reconsideracion-detalles.dto';
@@ -82,6 +83,20 @@ export class ReconsideracionesController {
       req.user.platform_user_id ?? req.user.id,
       req.user.tenant_id,
       dto,
+    );
+  }
+
+  @Patch('documentos/:id/status')
+  changeStatus(
+    @Param('id') id: string,
+    @Body() dto: ChangeDocumentStatusDto,
+    @Request() req: any,
+  ) {
+    return this.reconsideracionesService.changeStatus(
+      id,
+      dto,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
     );
   }
 }

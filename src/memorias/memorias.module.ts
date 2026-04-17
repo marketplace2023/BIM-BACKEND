@@ -1,27 +1,25 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BimAdminModule } from '../bim-admin/bim-admin.module';
-import { BimComputo } from '../database/entities/bim/bim-computo.entity';
-import { BimComputoDocumento } from '../database/entities/bim/bim-computo-documento.entity';
+import { BimMemoriaDescriptiva } from '../database/entities/bim/bim-memoria-descriptiva.entity';
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
-import { ComputosController } from './computos.controller';
-import { ComputosService } from './computos.service';
+import { MemoriasController } from './memorias.controller';
+import { MemoriasService } from './memorias.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      BimComputo,
-      BimComputoDocumento,
+      BimMemoriaDescriptiva,
       BimObra,
-      BimPartida,
       BimPresupuesto,
+      BimPartida,
     ]),
     BimAdminModule,
   ],
-  controllers: [ComputosController],
-  providers: [ComputosService],
-  exports: [ComputosService],
+  controllers: [MemoriasController],
+  providers: [MemoriasService],
+  exports: [MemoriasService],
 })
-export class ComputosModule {}
+export class MemoriasModule {}
