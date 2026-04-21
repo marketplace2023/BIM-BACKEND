@@ -25,6 +25,8 @@ import {
   mapFurStatusToLegacy,
   type MarketplaceEntityType,
   type MarketplaceRole,
+  SELLER_ENTITY_TYPES,
+  type SellerEntityType,
 } from '../common/constants/marketplace.constants';
 
 @Injectable()
@@ -228,12 +230,12 @@ export class AuthService implements OnModuleInit {
 
     if (
       entityType &&
-      ENTITY_TYPES.includes(entityType as MarketplaceEntityType)
+      SELLER_ENTITY_TYPES.includes(entityType as SellerEntityType)
     ) {
-      return entityType as MarketplaceEntityType;
+      return entityType as SellerEntityType;
     }
 
-    return 'customer';
+    return 'contractor';
   }
 
   private resolvePrimaryRole(

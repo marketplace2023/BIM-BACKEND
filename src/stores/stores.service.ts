@@ -492,12 +492,18 @@ export class StoresService {
     return this.findOne(id);
   }
 
-  async findPendingReviews(tenantId: string) {
+  async findPendingReviews(tenantId?: string) {
+    const where = tenantId
+      ? {
+          tenant_id: tenantId,
+          deleted_at: IsNull(),
+        }
+      : {
+          deleted_at: IsNull(),
+        };
+
     const partners = await this.partnersRepo.find({
-      where: {
-        tenant_id: tenantId,
-        deleted_at: IsNull(),
-      },
+      where,
       order: { created_at: 'DESC' },
     });
 
@@ -530,12 +536,16 @@ export class StoresService {
   }
 
   async adminSetReviewStatus(
-    tenantId: string,
     storeId: string,
     status: 'published' | 'draft',
+    tenantId?: string,
   ) {
+    const where = tenantId
+      ? { id: storeId, tenant_id: tenantId, deleted_at: IsNull() }
+      : { id: storeId, deleted_at: IsNull() };
+
     const partner = await this.partnersRepo.findOne({
-      where: { id: storeId, tenant_id: tenantId, deleted_at: IsNull() },
+      where,
     });
 
     if (!partner) {

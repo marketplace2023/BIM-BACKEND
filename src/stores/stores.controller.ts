@@ -234,28 +234,41 @@ export class StoresController {
   /** GET /api/stores/admin/reviews */
   @UseGuards(BimJwtGuard, BimAdminRoleGuard)
   @Get('admin/reviews')
-  getPendingReviews(@CurrentUser() user: { tenant_id: string }) {
-    return this.svc.findPendingReviews(user.tenant_id);
+  getPendingReviews(
+    @CurrentUser() user: { tenant_id: string; role?: string; roles?: string[] },
+  ) {
+    const isAdmin = user.role === 'admin' || user.roles?.includes('admin');
+    return this.svc.findPendingReviews(isAdmin ? undefined : user.tenant_id);
   }
 
   /** PATCH /api/stores/admin/:id/approve */
   @UseGuards(BimJwtGuard, BimAdminRoleGuard)
   @Patch('admin/:id/approve')
   approveStore(
-    @CurrentUser() user: { tenant_id: string },
+    @CurrentUser() user: { tenant_id: string; role?: string; roles?: string[] },
     @Param('id') id: string,
   ) {
-    return this.svc.adminSetReviewStatus(user.tenant_id, id, 'published');
+    const isAdmin = user.role === 'admin' || user.roles?.includes('admin');
+    return this.svc.adminSetReviewStatus(
+      id,
+      'published',
+      isAdmin ? undefined : user.tenant_id,
+    );
   }
 
   /** PATCH /api/stores/admin/:id/send-to-draft */
   @UseGuards(BimJwtGuard, BimAdminRoleGuard)
   @Patch('admin/:id/send-to-draft')
   sendStoreToDraft(
-    @CurrentUser() user: { tenant_id: string },
+    @CurrentUser() user: { tenant_id: string; role?: string; roles?: string[] },
     @Param('id') id: string,
   ) {
-    return this.svc.adminSetReviewStatus(user.tenant_id, id, 'draft');
+    const isAdmin = user.role === 'admin' || user.roles?.includes('admin');
+    return this.svc.adminSetReviewStatus(
+      id,
+      'draft',
+      isAdmin ? undefined : user.tenant_id,
+    );
   }
 
   /** GET /api/stores/:id */
