@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -82,7 +83,21 @@ export class RatingsService {
     });
   }
 
-  async create(tenantId: string, userId: string, dto: CreateRatingDto) {
+  async create(
+    user: {
+      id: string;
+      tenant_id: string;
+      role?: string;
+      roles?: string[];
+    },
+    dto: CreateRatingDto,
+  ) {
+    if (user.role === 'store' || user.roles?.includes('store')) {
+      throw new ForbiddenException(
+        'Only customers can create product reviews',
+      );
+    }
+
     let product: ProductTemplate | null = null;
     if (dto.product_tmpl_id) {
       product = await this.productsRepo.findOne({
@@ -93,9 +108,24 @@ export class RatingsService {
       }
     }
 
+    if (dto.product_tmpl_id) {
+      const existingReview = await this.repo.findOne({
+        where: {
+          reviewer_user_id: user.id,
+          product_tmpl_id: dto.product_tmpl_id,
+        },
+      });
+
+      if (existingReview) {
+        throw new ConflictException(
+          'You already created a review for this product',
+        );
+      }
+    }
+
     const entity = this.repo.create();
-    entity.tenant_id = tenantId;
-    entity.reviewer_user_id = userId;
+    entity.tenant_id = user.tenant_id;
+    entity.reviewer_user_id = user.id;
     entity.partner_id = dto.partner_id ?? product?.partner_id ?? null;
     entity.product_tmpl_id = dto.product_tmpl_id ?? null;
     entity.order_id = dto.order_id ?? null;

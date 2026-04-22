@@ -12,6 +12,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { IntentsModule } from './intents/intents.module';
+import { RatingsModule } from './ratings/ratings.module';
 
 // ── BIM (módulos nuevos) ─────────────────────────────────────
 import { ObrasModule } from './obras/obras.module';
@@ -53,6 +54,7 @@ import { BimAdminModule } from './bim-admin/bim-admin.module';
     ProductsModule,
     OrdersModule,
     IntentsModule,
+    RatingsModule,
 
     // BIM
     ObrasModule,

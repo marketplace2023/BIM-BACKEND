@@ -24,10 +24,11 @@ export class RatingsController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(
-    @CurrentUser() user: { id: string; tenant_id: string },
+    @CurrentUser()
+    user: { id: string; tenant_id: string; role?: string; roles?: string[] },
     @Body() dto: CreateRatingDto,
   ) {
-    return this.svc.create(user.tenant_id, user.id, dto);
+    return this.svc.create(user, dto);
   }
 
   /** GET /api/ratings?partner_id=&product_tmpl_id=&page=1&limit=10 */
