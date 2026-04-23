@@ -15,6 +15,7 @@ import { BimPrecioUnitario } from '../database/entities/bim/bim-precio-unitario.
 import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
 import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
+import { BimPresupuestoModificadoFuente } from '../database/entities/bim/bim-presupuesto-modificado-fuente.entity';
 import { PresupuestosService } from './presupuestos.service';
 import { PresupuestosController } from './presupuestos.controller';
 
@@ -33,6 +34,7 @@ import { PresupuestosController } from './presupuestos.controller';
       BimPrecioUnitario,
       BimReconsideracion,
       BimReconsideracionDocumento,
+      BimPresupuestoModificadoFuente,
       BimRecurso,
       BimObra,
     ]),

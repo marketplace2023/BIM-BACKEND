@@ -156,7 +156,7 @@ export class PreciosUnitariosService {
   ): Promise<BimApuDescomposicion> {
     await this.findOnePU(puId, tenantId);
     await this.findRecurso(dto.recurso_id, tenantId);
-    const item = this.decompRepo.create({ precio_unitario_id: puId, ...dto });
+    const item = this.decompRepo.create({ ...dto, precio_unitario_id: puId });
     const saved = await this.decompRepo.save(item);
     await this.recalcularPrecioBase(puId, tenantId);
     return saved;
@@ -201,9 +201,9 @@ export class PreciosUnitariosService {
   }
 
   private async findRecurso(id: string, tenantId: string) {
-    const recurso = await this.recursoRepo.findOneBy({
-      id,
-      tenant_id: tenantId,
+    const tenantIds = tenantId === '1' ? ['1'] : ['1', tenantId];
+    const recurso = await this.recursoRepo.findOne({
+      where: { id, tenant_id: In(tenantIds) },
     });
     if (!recurso) throw new NotFoundException(`Recurso #${id} no encontrado`);
     return recurso;

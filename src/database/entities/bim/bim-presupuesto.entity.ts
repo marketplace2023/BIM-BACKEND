@@ -13,6 +13,8 @@ import { ResUser } from '../identity/res-user.entity';
 
 @Entity('bim_presupuestos')
 @Index('idx_pres_obra_estado', ['obra_id', 'estado'])
+@Index('idx_pres_base', ['presupuesto_base_id'])
+@Index('idx_pres_obra_tipo_oficial', ['obra_id', 'tipo', 'es_oficial'])
 export class BimPresupuesto {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
@@ -28,12 +30,22 @@ export class BimPresupuesto {
   @JoinColumn({ name: 'obra_id' })
   obra: BimObra;
 
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  presupuesto_base_id: string | null;
+
+  @ManyToOne(() => BimPresupuesto, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'presupuesto_base_id' })
+  presupuesto_base: BimPresupuesto | null;
+
   @Column({ type: 'varchar', length: 30, default: 'obra' })
   tipo: string;
-  // obra | orientativo
+  // obra | orientativo | sin_apu | modificado
 
   @Column({ type: 'smallint', default: 1 })
   version: number;
+
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  es_oficial: boolean;
 
   @Column({ type: 'varchar', length: 220 })
   nombre: string;

@@ -34,7 +34,10 @@ export class MemoriasService {
       tenant_id: tenantId,
     }
 
-    if (presupuestoId) where.presupuesto_id = presupuestoId
+    if (presupuestoId) {
+      const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId)
+      where.presupuesto_id = presupuesto.id
+    }
 
     return this.memoriaRepo.find({
       where,
@@ -152,7 +155,23 @@ export class MemoriasService {
   private async findTenantPresupuesto(id: string, tenantId: string) {
     const presupuesto = await this.presupuestoRepo.findOne({ where: { id, tenant_id: tenantId } })
     if (!presupuesto) throw new NotFoundException(`Presupuesto #${id} no encontrado`)
-    return presupuesto
+
+    if (presupuesto.tipo !== 'modificado') {
+      return presupuesto
+    }
+
+    if (!presupuesto.presupuesto_base_id) {
+      throw new BadRequestException('El presupuesto modificado no tiene un presupuesto base asociado para operar.')
+    }
+
+    const presupuestoBase = await this.presupuestoRepo.findOne({
+      where: { id: presupuesto.presupuesto_base_id, tenant_id: tenantId },
+    })
+    if (!presupuestoBase) {
+      throw new NotFoundException(`Presupuesto base #${presupuesto.presupuesto_base_id} no encontrado`)
+    }
+
+    return presupuestoBase
   }
 
   private async findTenantPartida(id: string, tenantId: string) {

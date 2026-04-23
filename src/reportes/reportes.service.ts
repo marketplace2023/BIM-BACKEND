@@ -18,6 +18,10 @@ import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certif
 import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
 import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
+import { ComputosService } from '../computos/computos.service';
+import { MemoriasService } from '../memorias/memorias.service';
+import { PresupuestosService } from '../presupuestos/presupuestos.service';
+import { ReconsideracionesService } from '../reconsideraciones/reconsideraciones.service';
 
 type CloseoutRow = {
   capitulo: string;
@@ -29,6 +33,10 @@ type CloseoutRow = {
   montoPresupuesto: number;
   montoValuado: number;
 };
+
+const MEDICION_STATUSES_FOR_REPORTS = ['revisado', 'aprobado'] as const;
+const CERTIFICACION_STATUSES_FOR_REPORTS = ['revisada', 'aprobada', 'facturada'] as const;
+const RECONSIDERACION_STATUSES_FOR_REPORTS = ['revisado', 'aprobado'] as const;
 
 @Injectable()
 export class ReportesService {
@@ -57,6 +65,10 @@ export class ReportesService {
     private readonly reconsideracionDocumentoRepo: Repository<BimReconsideracionDocumento>,
     @InjectRepository(BimRecurso)
     private readonly recursoRepo: Repository<BimRecurso>,
+    private readonly computosService: ComputosService,
+    private readonly memoriasService: MemoriasService,
+    private readonly presupuestosService: PresupuestosService,
+    private readonly reconsideracionesService: ReconsideracionesService,
   ) {}
 
   async getComparativo(
@@ -72,8 +84,26 @@ export class ReportesService {
     });
     if (!presupuesto) throw new NotFoundException('Presupuesto no encontrado');
 
+    const presupuestoBase =
+      presupuesto.tipo === 'modificado' && presupuesto.presupuesto_base_id
+        ? await this.presupuestoRepo.findOne({
+            where: {
+              id: presupuesto.presupuesto_base_id,
+              tenant_id: tenantId,
+            },
+          })
+        : presupuesto;
+    if (!presupuestoBase) {
+      throw new NotFoundException('Presupuesto base no encontrado');
+    }
+
+    const modificadoSnapshot = await this.presupuestosService.getPresupuestoModificado(
+      presupuestoBase.id,
+      tenantId,
+    );
+
     const capitulos = await this.capituloRepo.find({
-      where: { presupuesto_id: presupuesto.id },
+      where: { presupuesto_id: presupuestoBase.id },
       order: { orden: 'ASC', id: 'ASC' },
     });
 
@@ -90,26 +120,43 @@ export class ReportesService {
     ).flat();
 
     const computos = await this.computoRepo.find({ where: { obra_id: obraId, tenant_id: tenantId } });
-    const mediciones = await this.medicionRepo.find({ where: { obra_id: obraId, tenant_id: tenantId } });
+    const mediciones = await this.medicionRepo
+      .createQueryBuilder('medicion')
+      .innerJoin(BimMedicionDocumento, 'documento', 'documento.id = medicion.documento_id')
+      .where('medicion.tenant_id = :tenantId', { tenantId })
+      .andWhere('medicion.obra_id = :obraId', { obraId })
+      .andWhere('documento.status IN (:...statuses)', {
+        statuses: [...MEDICION_STATUSES_FOR_REPORTS],
+      })
+      .getMany();
     const valuaciones = await this.lineaCertRepo
       .createQueryBuilder('linea')
       .innerJoin(BimCertificacion, 'cert', 'cert.id = linea.certificacion_id')
       .where('cert.tenant_id = :tenantId', { tenantId })
       .andWhere('cert.obra_id = :obraId', { obraId })
+      .andWhere('cert.estado IN (:...statuses)', {
+        statuses: [...CERTIFICACION_STATUSES_FOR_REPORTS],
+      })
       .getMany();
-    const reconsideraciones = await this.reconsideracionRepo
+    const reconsideracionPrecios = await this.reconsideracionRepo
       .createQueryBuilder('rec')
       .innerJoin(BimReconsideracionDocumento, 'doc', 'doc.id = rec.documento_id')
       .where('doc.tenant_id = :tenantId', { tenantId })
-      .andWhere('doc.obra_id = :obraId', { obraId })
+      .andWhere('doc.presupuesto_id = :presupuestoId', {
+        presupuestoId: presupuestoBase.id,
+      })
+      .andWhere('doc.tipo = :tipo', { tipo: 'precio' })
+      .andWhere('doc.status IN (:...statuses)', {
+        statuses: [...RECONSIDERACION_STATUSES_FOR_REPORTS],
+      })
       .getMany();
-
     const computosMap = new Map<string, number>();
     const medicionesMap = new Map<string, number>();
     const valuacionesMap = new Map<string, number>();
-    const extrasMap = new Map<string, number>();
-    const aumentosMap = new Map<string, number>();
-    const disminucionesMap = new Map<string, number>();
+    const reconsideracionPrecioMap = new Map<string, number>();
+    const modificadoMap = new Map(
+      modificadoSnapshot.detalle.map((item) => [String(item.partida_base_id), item]),
+    );
 
     for (const item of computos) {
       computosMap.set(String(item.partida_id), Number(item.resultado ?? 0));
@@ -120,23 +167,33 @@ export class ReportesService {
     for (const item of valuaciones) {
       valuacionesMap.set(String(item.partida_id), Number(item.cantidad_acumulada ?? 0));
     }
-    for (const item of reconsideraciones) {
+    for (const item of reconsideracionPrecios) {
       const partidaId = String(item.partida_id);
-      const cantidad = Math.abs(Number(item.cantidad_variacion ?? 0));
-      if (item.tipo === 'extra') extrasMap.set(partidaId, cantidad);
-      if (item.tipo === 'aumento') aumentosMap.set(partidaId, (aumentosMap.get(partidaId) ?? 0) + cantidad);
-      if (item.tipo === 'disminucion') disminucionesMap.set(partidaId, (disminucionesMap.get(partidaId) ?? 0) + cantidad);
+      reconsideracionPrecioMap.set(
+        partidaId,
+        (reconsideracionPrecioMap.get(partidaId) ?? 0) +
+          Number(item.monto_variacion ?? 0),
+      );
     }
 
-    const detalle = partidas.map(({ partida, capitulo }, index) => {
+    const formalizacion = await this.getFormalizacionResumen(
+      tenantId,
+      obraId,
+      presupuestoBase.id,
+    );
+
+    const detalleBase = partidas.map(({ partida, capitulo }, index) => {
+      const modificado = modificadoMap.get(String(partida.id));
       const baseCantidad = Number(partida.cantidad ?? 0);
-      const extras = extrasMap.get(String(partida.id)) ?? (partida.es_extra ? baseCantidad : 0);
-      const aumentos = aumentosMap.get(String(partida.id)) ?? 0;
-      const disminuciones = disminucionesMap.get(String(partida.id)) ?? 0;
-      const modificada = baseCantidad + extras + aumentos - disminuciones;
+      const extras = Number(modificado?.cantidad_extra ?? 0);
+      const aumentos = Number(modificado?.cantidad_aumento ?? 0);
+      const disminuciones = Number(modificado?.cantidad_disminucion ?? 0);
+      const modificada = Number(modificado?.cantidad_modificada ?? baseCantidad);
       const computado = computosMap.get(String(partida.id)) ?? 0;
       const medido = medicionesMap.get(String(partida.id)) ?? 0;
       const valuado = valuacionesMap.get(String(partida.id)) ?? 0;
+      const reconsideracionDiferencial =
+        reconsideracionPrecioMap.get(String(partida.id)) ?? 0;
       const precioUnitario = Number(partida.precio_unitario ?? 0);
 
       return {
@@ -155,27 +212,72 @@ export class ReportesService {
         computado: computado.toFixed(4),
         medido: medido.toFixed(4),
         valuado: valuado.toFixed(4),
+        reconsideracion_diferencial: reconsideracionDiferencial.toFixed(2),
         monto_original: (baseCantidad * precioUnitario).toFixed(2),
         monto_modificado: (modificada * precioUnitario).toFixed(2),
         monto_valuado: (valuado * precioUnitario).toFixed(2),
+        monto_valuado_reconsiderado: (
+          valuado * precioUnitario + reconsideracionDiferencial
+        ).toFixed(2),
       };
     });
 
+    const detalleExtras = modificadoSnapshot.detalle
+      .filter((item) => Number(item.es_extra) === 1)
+      .map((item, index) => ({
+        nro: detalleBase.length + index + 1,
+        capitulo: `${item.capitulo_codigo} · ${item.capitulo_nombre}`,
+        partida_id: item.partida_base_id,
+        codigo: item.codigo,
+        descripcion: item.descripcion,
+        unidad: item.unidad,
+        precio_unitario: item.precio_unitario,
+        presupuesto_original: item.cantidad_original,
+        extras: item.cantidad_extra,
+        aumentos: item.cantidad_aumento,
+        disminuciones: item.cantidad_disminucion,
+        presupuesto_modificado: item.cantidad_modificada,
+        computado: '0.0000',
+        medido: medicionesMap.get(String(item.partida_base_id))?.toFixed(4) ?? '0.0000',
+        valuado: valuacionesMap.get(String(item.partida_base_id))?.toFixed(4) ?? '0.0000',
+        reconsideracion_diferencial: '0.00',
+        monto_original: item.monto_original,
+        monto_modificado: item.monto_modificado,
+        monto_valuado: ((valuacionesMap.get(String(item.partida_base_id)) ?? 0) * Number(item.precio_unitario)).toFixed(2),
+        monto_valuado_reconsiderado: ((valuacionesMap.get(String(item.partida_base_id)) ?? 0) * Number(item.precio_unitario)).toFixed(2),
+      }));
+
+    const detalle = [...detalleBase, ...detalleExtras];
+    const reconsideracionDiferencial = this.sumBy(
+      detalle,
+      'reconsideracion_diferencial',
+    ).toFixed(2);
+    const valuadoReconsiderado = this.sumBy(
+      detalle,
+      'monto_valuado_reconsiderado',
+    ).toFixed(2);
+
     return {
       obra,
-      presupuesto,
+      presupuesto: presupuestoBase,
+      presupuesto_modificado: modificadoSnapshot.presupuesto_modificado,
+      original_oficial: modificadoSnapshot.original_oficial,
+      trazabilidad_modificado: modificadoSnapshot.fuentes,
       summary: {
-        original: this.sumBy(detalle, 'monto_original').toFixed(2),
-        modificado: this.sumBy(detalle, 'monto_modificado').toFixed(2),
+        original: modificadoSnapshot.resumen.original,
+        modificado: modificadoSnapshot.resumen.modificado,
         valuado: this.sumBy(detalle, 'monto_valuado').toFixed(2),
+        valuado_reconsiderado: valuadoReconsiderado,
+        reconsideracion_diferencial: reconsideracionDiferencial,
         computado: this.sumBy(detalle, 'computado').toFixed(4),
         medido: this.sumBy(detalle, 'medido').toFixed(4),
         cantidad_modificada: this.sumBy(detalle, 'presupuesto_modificado').toFixed(4),
         variaciones: {
-          extras: this.sumBy(detalle, 'extras').toFixed(4),
-          aumentos: this.sumBy(detalle, 'aumentos').toFixed(4),
-          disminuciones: this.sumBy(detalle, 'disminuciones').toFixed(4),
+          extras: modificadoSnapshot.resumen.extras,
+          aumentos: modificadoSnapshot.resumen.aumentos,
+          disminuciones: modificadoSnapshot.resumen.disminuciones,
         },
+        formalizacion,
       },
       detalle,
     };
@@ -190,17 +292,28 @@ export class ReportesService {
     const presupuesto = comparativo.presupuesto;
     const obra = comparativo.obra;
 
-    const original = Number(comparativo.summary.original ?? 0);
     const modificado = Number(comparativo.summary.modificado ?? 0);
-    const valuado = Number(comparativo.summary.valuado ?? 0);
-    const diferenciaEconomica = modificado - valuado;
+    const reconsideracionDiferencial = Number(
+      comparativo.summary.reconsideracion_diferencial ?? 0,
+    );
+    const economicoAjustado = modificado + reconsideracionDiferencial;
+    const valuadoReconsiderado = Number(
+      comparativo.summary.valuado_reconsiderado ?? 0,
+    );
+    const diferenciaEconomica = economicoAjustado - valuadoReconsiderado;
 
     const cantidadModificada = Number(comparativo.summary.cantidad_modificada ?? 0);
     const medido = Number(comparativo.summary.medido ?? 0);
     const diferenciaFisica = cantidadModificada - medido;
+    const documentosPendientes =
+      (comparativo.summary.formalizacion?.mediciones_borrador ?? 0) +
+      (comparativo.summary.formalizacion?.valuaciones_borrador ?? 0) +
+      (comparativo.summary.formalizacion?.reconsideraciones_borrador ?? 0);
 
     const estadoCierre =
-      Math.abs(diferenciaEconomica) < 0.01 && Math.abs(diferenciaFisica) < 0.0001
+      documentosPendientes > 0
+        ? 'pendiente_formalizacion'
+        : Math.abs(diferenciaEconomica) < 0.01 && Math.abs(diferenciaFisica) < 0.0001
         ? 'listo_para_cerrar'
         : 'con_diferencias';
 
@@ -217,15 +330,21 @@ export class ReportesService {
         nombre: presupuesto.nombre,
         moneda: presupuesto.moneda,
       },
+      original_oficial: comparativo.original_oficial,
+      trazabilidad_modificado: comparativo.trazabilidad_modificado,
       resumen: {
         original: comparativo.summary.original,
         modificado: comparativo.summary.modificado,
         valuado: comparativo.summary.valuado,
+        valuado_reconsiderado: comparativo.summary.valuado_reconsiderado,
+        reconsideracion_diferencial: comparativo.summary.reconsideracion_diferencial,
+        economico_ajustado: economicoAjustado.toFixed(2),
         saldo_economico: diferenciaEconomica.toFixed(2),
         cantidad_modificada: comparativo.summary.cantidad_modificada,
         medido: comparativo.summary.medido,
         saldo_fisico: diferenciaFisica.toFixed(4),
         estado_cierre: estadoCierre,
+        formalizacion: comparativo.summary.formalizacion,
       },
       detalle: comparativo.detalle,
     };
@@ -236,6 +355,7 @@ export class ReportesService {
     tenantId: string,
     obraId: string,
     presupuestoId?: string,
+    documentoId?: string,
   ) {
     const obra = await this.obraRepo.findOne({
       where: { id: obraId, tenant_id: tenantId },
@@ -269,8 +389,14 @@ export class ReportesService {
       presupuesto: 'Reporte de Presupuesto',
       mediciones: 'Reporte de Mediciones',
       valuaciones: 'Reporte de Valuaciones',
+      computos: 'Reporte de Computos Metricos',
+      memorias: 'Reporte de Memorias Descriptivas',
       comparativo: 'Reporte Comparativo',
       modificado: 'Presupuesto Modificado',
+      aumentos: 'Presupuesto de Aumentos',
+      disminuciones: 'Presupuesto de Disminuciones',
+      extras: 'Presupuesto de Obras Extras',
+      'reconsideracion-precios': 'Reconsideracion de Precios',
       cierre: 'Cuadro de Cierre',
       insumos: 'Base de Insumos',
     };
@@ -305,6 +431,19 @@ export class ReportesService {
           presupuesto!.moneda,
         );
         break;
+      case 'computos':
+        await this.renderComputos(
+          doc,
+          tenantId,
+          obraId,
+          presupuestoId,
+          presupuesto!.moneda,
+          documentoId,
+        );
+        break;
+      case 'memorias':
+        await this.renderMemorias(doc, tenantId, obraId, presupuestoId);
+        break;
       case 'cierre':
         await this.renderCierre(
           doc,
@@ -323,6 +462,20 @@ export class ReportesService {
           presupuesto!.id,
           presupuesto!.moneda,
           type as 'comparativo' | 'modificado',
+        );
+        break;
+      case 'aumentos':
+      case 'disminuciones':
+      case 'extras':
+      case 'reconsideracion-precios':
+        await this.renderReconsideracionDocumento(
+          doc,
+          tenantId,
+          obraId,
+          presupuestoId,
+          presupuesto!.moneda,
+          type,
+          documentoId,
         );
         break;
       case 'insumos':
@@ -655,6 +808,66 @@ export class ReportesService {
     }
   }
 
+  private async renderComputos(
+    doc: PDFKit.PDFDocument,
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string | undefined,
+    currency: string,
+    documentoId?: string,
+  ) {
+    let targetDocumentoId = documentoId;
+
+    if (!targetDocumentoId) {
+      const documentos = await this.computosService.findByObra(
+        obraId,
+        tenantId,
+        presupuestoId,
+      );
+      if (!documentos.length) {
+        this.renderSectionTitle(doc, 'Computos metricos');
+        this.line(doc, 'No hay documentos de computos para la obra seleccionada.');
+        return;
+      }
+      targetDocumentoId = String(documentos[0].id);
+    }
+
+    const data = await this.computosService.getDocumentoResumen(
+      targetDocumentoId,
+      tenantId,
+    );
+
+    this.renderSectionTitle(
+      doc,
+      `Computos Nro. ${data.documento.numero} · ${data.documento.titulo}`,
+    );
+    this.line(
+      doc,
+      `Fecha: ${new Date(data.documento.fecha).toLocaleDateString('es-ES')} | Estado: ${data.documento.status}`,
+    );
+    if (data.documento.observaciones) {
+      this.line(doc, `Observaciones: ${data.documento.observaciones}`);
+    }
+    this.line(
+      doc,
+      `Partidas: ${data.resumen.partidas} | Presupuesto base: ${this.formatPlainNumber(data.resumen.presupuesto_base)} | Computado: ${this.formatPlainNumber(data.resumen.computado_total)} | Monto: ${this.formatCurrency(data.resumen.monto_total, currency)}`,
+    );
+    doc.moveDown(0.4);
+
+    for (const row of data.detalle) {
+      this.line(
+        doc,
+        `${row.codigo} | ${row.descripcion_partida} | Formula ${row.formula_tipo} | Resultado ${this.formatPlainNumber(row.resultado)} ${row.unidad} | Total ${this.formatCurrency(row.total, currency)}`,
+      );
+      if (row.descripcion_computo && row.descripcion_computo !== row.descripcion_partida) {
+        this.line(doc, `  Descripcion: ${row.descripcion_computo}`);
+      }
+      if (row.notas) {
+        this.line(doc, `  Notas: ${row.notas}`);
+      }
+    }
+  }
+
   private async renderValuaciones(
     doc: PDFKit.PDFDocument,
     tenantId: string,
@@ -690,6 +903,165 @@ export class ReportesService {
     }
   }
 
+  private async renderMemorias(
+    doc: PDFKit.PDFDocument,
+    tenantId: string,
+    obraId: string,
+    presupuestoId?: string,
+  ) {
+    const memorias = await this.memoriasService.findByObra(
+      obraId,
+      tenantId,
+      presupuestoId,
+    );
+
+    this.renderSectionTitle(doc, 'Memorias descriptivas');
+    if (!memorias.length) {
+      this.line(doc, 'No hay memorias descriptivas para la obra seleccionada.');
+      return;
+    }
+
+    for (const memoria of memorias) {
+      const partidaLabel = memoria.partida
+        ? `${memoria.partida.codigo} · ${memoria.partida.descripcion}`
+        : 'Sin partida especifica';
+      this.line(
+        doc,
+        `${memoria.titulo} | Tipo ${memoria.tipo} | Estado ${memoria.status} | ${partidaLabel}`,
+      );
+      this.line(doc, memoria.contenido);
+      doc.moveDown(0.4);
+    }
+  }
+
+  private async renderReconsideracionDocumento(
+    doc: PDFKit.PDFDocument,
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string | undefined,
+    currency: string,
+    reportType: string,
+    documentoId?: string,
+  ) {
+    const tipoMap: Record<string, string> = {
+      aumentos: 'aumento',
+      disminuciones: 'disminucion',
+      extras: 'extra',
+      'reconsideracion-precios': 'precio',
+    };
+
+    const targetTipo = tipoMap[reportType];
+    let targetDocumentoId = documentoId;
+
+    if (!targetTipo) {
+      throw new BadRequestException('Tipo de reconsideracion no soportado');
+    }
+
+    if (!targetDocumentoId) {
+      const documentos = await this.reconsideracionesService.findByObra(
+        obraId,
+        tenantId,
+        targetTipo,
+        presupuestoId,
+      );
+      if (!documentos.length) {
+        this.renderSectionTitle(doc, 'Documentos del modulo');
+        this.line(doc, 'No hay documentos disponibles para este reporte.');
+        return;
+      }
+      targetDocumentoId = String(documentos[0].id);
+    }
+
+    const documento = await this.reconsideracionesService.findDocumento(
+      targetDocumentoId,
+      tenantId,
+    );
+    if (documento.tipo !== targetTipo) {
+      throw new BadRequestException('El documento no corresponde al tipo de reporte solicitado');
+    }
+
+    const data = await this.reconsideracionesService.getDocumentoResumen(
+      targetDocumentoId,
+      tenantId,
+    ) as any;
+
+    this.renderSectionTitle(
+      doc,
+      `${documento.titulo} · Nro. ${documento.numero}`,
+    );
+    this.line(
+      doc,
+      `Fecha: ${new Date(documento.fecha).toLocaleDateString('es-ES')} | Estado: ${documento.status}`,
+    );
+    if (documento.certificacion) {
+      this.line(
+        doc,
+        `Valuacion base: #${documento.certificacion.numero} | Estado ${documento.certificacion.estado}`,
+      );
+    }
+    if (documento.observaciones) {
+      this.line(doc, `Observaciones: ${documento.observaciones}`);
+    }
+
+    if (documento.tipo === 'precio') {
+      this.line(doc, `Base: ${this.formatCurrency(data.resumen.base, currency)}`);
+      this.line(doc, `Reconsiderado: ${this.formatCurrency(data.resumen.reconsiderado, currency)}`);
+      this.line(doc, `Diferencial: ${this.formatCurrency(data.resumen.diferencial, currency)}`);
+      this.line(doc, `Fuente: ${data.resumen.fuente}`);
+      doc.moveDown(0.4);
+
+      for (const row of data.detalle) {
+        this.line(
+          doc,
+          `${row.codigo} | ${row.descripcion} | Base ${this.formatCurrency(row.monto_base, currency)} | Reconsiderado ${this.formatCurrency(row.monto_reconsiderado, currency)} | Diferencial ${this.formatCurrency(row.diferencial, currency)}`,
+        );
+        if (row.justificacion) {
+          this.line(doc, `  Justificacion: ${row.justificacion}`);
+        }
+      }
+      return;
+    }
+
+    if (documento.tipo === 'extra') {
+      this.line(doc, `Original: ${this.formatCurrency(data.resumen.original, currency)}`);
+      this.line(doc, `Extras: ${this.formatCurrency(data.resumen.extras, currency)}`);
+      this.line(doc, `Aumentos: ${this.formatCurrency(data.resumen.aumentos, currency)}`);
+      this.line(doc, `Disminuciones: ${this.formatCurrency(data.resumen.disminuciones, currency)}`);
+      this.line(doc, `Modificado: ${this.formatCurrency(data.resumen.modificado, currency)}`);
+      doc.moveDown(0.4);
+
+      for (const row of data.detalle) {
+        this.line(
+          doc,
+          `${row.codigo} | ${row.descripcion} | Cant ${this.formatPlainNumber(row.cantidad_extra)} ${row.unidad} | PU ${this.formatCurrency(row.precio_unitario, currency)} | Monto ${this.formatCurrency(row.monto_extra, currency)}`,
+        );
+        if (row.justificacion) {
+          this.line(doc, `  Justificacion: ${row.justificacion}`);
+        }
+      }
+      return;
+    }
+
+    this.line(doc, `Original: ${this.formatCurrency(data.resumen.original, currency)}`);
+    this.line(doc, `Extras: ${this.formatCurrency(data.resumen.extras, currency)}`);
+    this.line(doc, `Aumentos acumulados: ${this.formatCurrency(data.resumen.aumentos_acumulados, currency)}`);
+    this.line(doc, `Disminuciones acumuladas: ${this.formatCurrency(data.resumen.disminuciones_acumuladas, currency)}`);
+    this.line(doc, `Modificado: ${this.formatCurrency(data.resumen.modificado, currency)}`);
+    doc.moveDown(0.4);
+
+    for (const row of data.detalle) {
+      this.line(
+        doc,
+        documento.tipo === 'aumento'
+          ? `${row.codigo} | ${row.descripcion} | Orig ${this.formatPlainNumber(row.cantidad_original)} | Aum act ${this.formatPlainNumber(row.aumento_actual)} | Aum acum ${this.formatPlainNumber(row.cantidad_aumento_acumulado)} | Mod ${this.formatPlainNumber(row.cantidad_modificada)} | Monto act ${this.formatCurrency(row.monto_aumento_actual, currency)}`
+          : `${row.codigo} | ${row.descripcion} | Orig ${this.formatPlainNumber(row.cantidad_original)} | Dism act ${this.formatPlainNumber(row.disminucion_actual)} | Dism acum ${this.formatPlainNumber(row.cantidad_disminucion_acumulada)} | Mod ${this.formatPlainNumber(row.cantidad_modificada)} | Monto act ${this.formatCurrency(row.monto_disminucion_actual, currency)}`,
+      );
+      if (row.justificacion) {
+        this.line(doc, `  Justificacion: ${row.justificacion}`);
+      }
+    }
+  }
+
   private async renderCierre(
     doc: PDFKit.PDFDocument,
     tenantId: string,
@@ -697,12 +1069,30 @@ export class ReportesService {
     presupuestoId: string,
     currency: string,
   ) {
-    const rows = await this.buildCloseoutRows(tenantId, obraId, presupuestoId);
+    const cierre = await this.getCierre(tenantId, obraId, presupuestoId);
     this.renderSectionTitle(doc, 'Cuadro de Cierre Consolidado');
-    for (const row of rows) {
+    this.line(doc, `Modificado: ${this.formatCurrency(cierre.resumen.modificado, currency)}`);
+    if (cierre.original_oficial) {
       this.line(
         doc,
-        `${row.capitulo} | ${row.partida} | Pres ${row.presupuestoCantidad.toFixed(2)} | Comp ${row.computado.toFixed(2)} | Med ${row.medido.toFixed(2)} | Presup ${this.formatCurrency(row.montoPresupuesto, currency)} | Val ${this.formatCurrency(row.montoValuado, currency)}`,
+        `Original oficial: ${cierre.original_oficial.nombre} (v${cierre.original_oficial.version})`,
+      );
+    }
+    this.line(doc, `Reconsideracion precios: ${this.formatCurrency(cierre.resumen.reconsideracion_diferencial, currency)}`);
+    this.line(doc, `Economico ajustado: ${this.formatCurrency(cierre.resumen.economico_ajustado, currency)}`);
+    this.line(doc, `Valuado reconsiderado: ${this.formatCurrency(cierre.resumen.valuado_reconsiderado, currency)}`);
+    this.line(doc, `Estado cierre: ${cierre.resumen.estado_cierre}`);
+    if (cierre.trazabilidad_modificado.length) {
+      this.line(
+        doc,
+        `Fuentes modificado: ${cierre.trazabilidad_modificado.map((item: any) => `${item.tipo} #${item.numero}`).join(', ')}`,
+      );
+    }
+    doc.moveDown(0.4);
+    for (const row of cierre.detalle) {
+      this.line(
+        doc,
+        `${row.codigo} | ${row.descripcion} | Mod ${row.presupuesto_modificado} | Med ${row.medido} | Val ${row.valuado} | Val+Rec ${this.formatCurrency((row as any).monto_valuado_reconsiderado ?? row.monto_valuado, currency)}`,
       );
     }
   }
@@ -738,18 +1128,73 @@ export class ReportesService {
     );
     this.line(doc, `Original: ${this.formatCurrency(data.summary.original, currency)}`);
     this.line(doc, `Modificado: ${this.formatCurrency(data.summary.modificado, currency)}`);
+    if (data.original_oficial) {
+      this.line(
+        doc,
+        `Original oficial: ${data.original_oficial.nombre} (v${data.original_oficial.version})`,
+      );
+    }
     this.line(doc, `Valuado: ${this.formatCurrency(data.summary.valuado, currency)}`);
+    this.line(doc, `Reconsideracion precios: ${this.formatCurrency(data.summary.reconsideracion_diferencial, currency)}`);
+    this.line(doc, `Valuado + reconsideracion: ${this.formatCurrency(data.summary.valuado_reconsiderado, currency)}`);
     this.line(doc, `Extras: ${data.summary.variaciones.extras}`);
     this.line(doc, `Aumentos: ${data.summary.variaciones.aumentos}`);
     this.line(doc, `Disminuciones: ${data.summary.variaciones.disminuciones}`);
+    if (data.trazabilidad_modificado.length) {
+      this.line(
+        doc,
+        `Fuentes modificado: ${data.trazabilidad_modificado.map((item: any) => `${item.tipo} #${item.numero}`).join(', ')}`,
+      );
+    }
+    this.line(doc, `Pendientes borrador: Med ${data.summary.formalizacion.mediciones_borrador} | Val ${data.summary.formalizacion.valuaciones_borrador} | Rec ${data.summary.formalizacion.reconsideraciones_borrador}`);
     doc.moveDown(0.5);
 
     for (const row of data.detalle) {
       this.line(
         doc,
-        `${row.codigo} | ${row.descripcion} | Ori ${row.presupuesto_original} | Mod ${row.presupuesto_modificado} | Comp ${row.computado} | Med ${row.medido} | Val ${row.valuado}`,
+        `${row.codigo} | ${row.descripcion} | Ori ${row.presupuesto_original} | Mod ${row.presupuesto_modificado} | Comp ${row.computado} | Med ${row.medido} | Val ${row.valuado} | Rec ${row.reconsideracion_diferencial}`,
       );
     }
+  }
+
+  private async getFormalizacionResumen(
+    tenantId: string,
+    obraId: string,
+    presupuestoId: string,
+  ) {
+    const [medicionesBorrador, valuacionesBorrador, reconsideracionesBorrador] =
+      await Promise.all([
+        this.medicionDocumentoRepo.count({
+          where: {
+            tenant_id: tenantId,
+            obra_id: obraId,
+            presupuesto_id: presupuestoId,
+            status: 'borrador',
+          },
+        }),
+        this.certificacionRepo.count({
+          where: {
+            tenant_id: tenantId,
+            obra_id: obraId,
+            presupuesto_id: presupuestoId,
+            estado: 'borrador',
+          },
+        }),
+        this.reconsideracionDocumentoRepo.count({
+          where: {
+            tenant_id: tenantId,
+            obra_id: obraId,
+            presupuesto_id: presupuestoId,
+            status: 'borrador',
+          },
+        }),
+      ]);
+
+    return {
+      mediciones_borrador: medicionesBorrador,
+      valuaciones_borrador: valuacionesBorrador,
+      reconsideraciones_borrador: reconsideracionesBorrador,
+    };
   }
 
   private async buildCloseoutRows(

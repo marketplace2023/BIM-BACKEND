@@ -93,7 +93,8 @@ export class ComputosService {
     };
 
     if (presupuestoId) {
-      where.presupuesto_id = presupuestoId;
+      const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
+      where.presupuesto_id = presupuesto.id;
     }
 
     return this.documentoRepo.find({
@@ -388,7 +389,27 @@ export class ComputosService {
       where: { id, tenant_id: tenantId },
     });
     if (!presupuesto) throw new NotFoundException(`Presupuesto #${id} no encontrado`);
-    return presupuesto;
+
+    if (presupuesto.tipo !== 'modificado') {
+      return presupuesto;
+    }
+
+    if (!presupuesto.presupuesto_base_id) {
+      throw new BadRequestException(
+        'El presupuesto modificado no tiene un presupuesto base asociado para operar.',
+      );
+    }
+
+    const presupuestoBase = await this.presupuestoRepo.findOne({
+      where: { id: presupuesto.presupuesto_base_id, tenant_id: tenantId },
+    });
+    if (!presupuestoBase) {
+      throw new NotFoundException(
+        `Presupuesto base #${presupuesto.presupuesto_base_id} no encontrado`,
+      );
+    }
+
+    return presupuestoBase;
   }
 
   private async nextNumero(tenantId: string, presupuestoId: string) {
@@ -400,13 +421,13 @@ export class ComputosService {
   }
 
   private async findPresupuestoPartidas(presupuestoId: string, tenantId: string): Promise<PartidaBaseRow[]> {
-    await this.findTenantPresupuesto(presupuestoId, tenantId);
+    const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
 
     return this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
       .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
-      .where('presupuesto.id = :presupuestoId', { presupuestoId })
+      .where('presupuesto.id = :presupuestoId', { presupuestoId: presupuesto.id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
       .select([
         'partida.id AS id',

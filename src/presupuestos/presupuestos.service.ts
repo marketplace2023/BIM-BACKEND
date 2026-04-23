@@ -20,6 +20,7 @@ import { BimPrecioUnitario } from '../database/entities/bim/bim-precio-unitario.
 import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
 import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
+import { BimPresupuestoModificadoFuente } from '../database/entities/bim/bim-presupuesto-modificado-fuente.entity';
 import {
   CreatePresupuestoDto,
   CreateCapituloDto,
@@ -63,6 +64,70 @@ type PartidaDirectCostBreakdown = {
   otros: number;
 };
 
+type PresupuestoModificadoDetalle = {
+  partida_base_id: string;
+  capitulo_base_id: string;
+  codigo: string;
+  descripcion: string;
+  unidad: string;
+  orden: number;
+  capitulo_codigo: string;
+  capitulo_nombre: string;
+  capitulo_orden: number;
+  cantidad_original: number;
+  precio_unitario: number;
+  cantidad_aumento: number;
+  cantidad_disminucion: number;
+  cantidad_extra: number;
+  cantidad_modificada: number;
+  monto_original: number;
+  monto_modificado: number;
+  es_extra: boolean;
+};
+
+type PresupuestoModificadoSnapshot = {
+  presupuesto_base: BimPresupuesto;
+  presupuesto_modificado: BimPresupuesto | null;
+  original_oficial: BimPresupuesto | null;
+  fuentes: Array<{
+    documento_id: string;
+    tipo: string;
+    numero: number;
+    fecha: string;
+    titulo: string;
+    status: string;
+  }>;
+  resumen: {
+    original: string;
+    extras: string;
+    aumentos: string;
+    disminuciones: string;
+    modificado: string;
+  };
+  detalle: Array<{
+    partida_base_id: string;
+    codigo: string;
+    descripcion: string;
+    unidad: string;
+    capitulo_codigo: string;
+    capitulo_nombre: string;
+    cantidad_original: string;
+    precio_unitario: string;
+    cantidad_extra: string;
+    cantidad_aumento: string;
+    cantidad_disminucion: string;
+    cantidad_modificada: string;
+    monto_original: string;
+    monto_modificado: string;
+    es_extra: number;
+  }>;
+};
+
+type PresupuestoTreeCapitulo = BimCapitulo & {
+  partidas: BimPartida[];
+  children: PresupuestoTreeCapitulo[];
+};
+
 @Injectable()
 export class PresupuestosService {
   constructor(
@@ -86,6 +151,8 @@ export class PresupuestosService {
     private readonly reconsideracionRepo: Repository<BimReconsideracion>,
     @InjectRepository(BimReconsideracionDocumento)
     private readonly reconsideracionDocumentoRepo: Repository<BimReconsideracionDocumento>,
+    @InjectRepository(BimPresupuestoModificadoFuente)
+    private readonly presupuestoModificadoFuenteRepo: Repository<BimPresupuestoModificadoFuente>,
     @InjectRepository(BimRecurso)
     private readonly recursoRepo: Repository<BimRecurso>,
     @InjectRepository(BimObra)
@@ -105,6 +172,7 @@ export class PresupuestosService {
         tenant_id: tenantId,
         obra_id: dto.obra_id,
         tipo: dto.tipo ?? 'obra',
+        es_oficial: false,
         nombre: dto.nombre,
         descripcion: dto.descripcion,
         moneda: dto.moneda ?? 'USD',
@@ -148,8 +216,8 @@ export class PresupuestosService {
     if (dto.partidas?.length) {
       for (const pDto of dto.partidas) {
         const partida = manager.create(BimPartida, {
-          capitulo_id: savedCap.id,
           ...pDto,
+          capitulo_id: savedCap.id,
         });
         await manager.save(BimPartida, partida);
       }
@@ -171,7 +239,7 @@ export class PresupuestosService {
     }
     return this.presupuestoRepo.find({
       where,
-      order: { version: 'DESC', created_at: 'DESC' },
+      order: { es_oficial: 'DESC', version: 'DESC', created_at: 'DESC' },
     });
   }
 
@@ -189,30 +257,312 @@ export class PresupuestosService {
 
     const capitulos = await this.capituloRepo.find({
       where: { presupuesto_id: id },
-      order: { orden: 'ASC' },
+      order: { orden: 'ASC', id: 'ASC' },
     });
 
     const partidasPorCapitulo = new Map<string, BimPartida[]>();
     for (const cap of capitulos) {
       const partidas = await this.partidaRepo.find({
         where: { capitulo_id: cap.id },
-        order: { orden: 'ASC' },
+        order: { orden: 'ASC', id: 'ASC' },
       });
       partidasPorCapitulo.set(cap.id, partidas);
     }
 
+    const capitulosByParent = new Map<string | null, BimCapitulo[]>();
+    for (const capitulo of capitulos) {
+      const key = capitulo.parent_id ? String(capitulo.parent_id) : null;
+      const rows = capitulosByParent.get(key) ?? [];
+      rows.push(capitulo);
+      capitulosByParent.set(key, rows);
+    }
+
+    const buildTree = (parentId: string | null): PresupuestoTreeCapitulo[] => {
+      const nodes = capitulosByParent.get(parentId) ?? [];
+      return nodes.map((capitulo) => ({
+        ...capitulo,
+        partidas: partidasPorCapitulo.get(capitulo.id) ?? [],
+        children: buildTree(String(capitulo.id)),
+      }));
+    };
+
     return {
       ...presupuesto,
-      capitulos: capitulos.map((cap) => ({
-        ...cap,
-        partidas: partidasPorCapitulo.get(cap.id) ?? [],
+      capitulos: buildTree(null),
+    };
+  }
+
+  async getPresupuestoModificado(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<PresupuestoModificadoSnapshot> {
+    const presupuestoBase = await this.resolvePresupuestoBase(
+      presupuestoId,
+      tenantId,
+    );
+    const detalle = await this.buildPresupuestoModificadoDetalle(
+      presupuestoBase,
+      tenantId,
+    );
+    const originalOficial = await this.findPresupuestoOriginalOficial(
+      presupuestoBase.obra_id,
+      tenantId,
+    );
+    const presupuestoModificado = await this.presupuestoRepo.findOne({
+      where: {
+        tenant_id: tenantId,
+        presupuesto_base_id: presupuestoBase.id,
+        tipo: 'modificado',
+      },
+      order: { es_oficial: 'DESC', version: 'DESC', updated_at: 'DESC' },
+    });
+    const fuentes = presupuestoModificado
+      ? await this.listPresupuestoModificadoFuentes(presupuestoModificado.id, tenantId)
+      : [];
+
+    const original = detalle.reduce((sum, item) => sum + item.monto_original, 0);
+    const extras = detalle.reduce((sum, item) => sum + item.cantidad_extra * item.precio_unitario, 0);
+    const aumentos = detalle.reduce((sum, item) => sum + item.cantidad_aumento * item.precio_unitario, 0);
+    const disminuciones = detalle.reduce((sum, item) => sum + item.cantidad_disminucion * item.precio_unitario, 0);
+    const modificado = detalle.reduce((sum, item) => sum + item.monto_modificado, 0);
+
+    return {
+      presupuesto_base: presupuestoBase,
+      presupuesto_modificado: presupuestoModificado,
+      original_oficial: originalOficial,
+      fuentes,
+      resumen: {
+        original: original.toFixed(2),
+        extras: extras.toFixed(2),
+        aumentos: aumentos.toFixed(2),
+        disminuciones: disminuciones.toFixed(2),
+        modificado: modificado.toFixed(2),
+      },
+      detalle: detalle.map((item) => ({
+        partida_base_id: item.partida_base_id,
+        codigo: item.codigo,
+        descripcion: item.descripcion,
+        unidad: item.unidad,
+        capitulo_codigo: item.capitulo_codigo,
+        capitulo_nombre: item.capitulo_nombre,
+        cantidad_original: item.cantidad_original.toFixed(4),
+        precio_unitario: item.precio_unitario.toFixed(4),
+        cantidad_extra: item.cantidad_extra.toFixed(4),
+        cantidad_aumento: item.cantidad_aumento.toFixed(4),
+        cantidad_disminucion: item.cantidad_disminucion.toFixed(4),
+        cantidad_modificada: item.cantidad_modificada.toFixed(4),
+        monto_original: item.monto_original.toFixed(2),
+        monto_modificado: item.monto_modificado.toFixed(2),
+        es_extra: item.es_extra ? 1 : 0,
       })),
     };
+  }
+
+  async syncPresupuestoModificado(
+    presupuestoId: string,
+    userId: string,
+    tenantId: string,
+  ): Promise<PresupuestoModificadoSnapshot> {
+    const presupuestoBase = await this.resolvePresupuestoBase(
+      presupuestoId,
+      tenantId,
+    );
+    const detalle = await this.buildPresupuestoModificadoDetalle(
+      presupuestoBase,
+      tenantId,
+    );
+
+    return this.dataSource.transaction(async (manager) => {
+      const presupuestoRepo = manager.getRepository(BimPresupuesto);
+      const capituloRepo = manager.getRepository(BimCapitulo);
+      const partidaRepo = manager.getRepository(BimPartida);
+
+      let presupuestoModificado = await presupuestoRepo.findOne({
+        where: {
+          tenant_id: tenantId,
+          presupuesto_base_id: presupuestoBase.id,
+          tipo: 'modificado',
+        },
+        order: { es_oficial: 'DESC', version: 'DESC', updated_at: 'DESC' },
+      });
+
+      const totalModificado = detalle.reduce(
+        (sum, item) => sum + item.monto_modificado,
+        0,
+      );
+
+      if (!presupuestoModificado) {
+        presupuestoModificado = presupuestoRepo.create({
+          tenant_id: tenantId,
+          obra_id: presupuestoBase.obra_id,
+          presupuesto_base_id: presupuestoBase.id,
+          tipo: 'modificado',
+          es_oficial: true,
+          nombre: `Presupuesto modificado · ${presupuestoBase.nombre}`,
+          descripcion: `Snapshot formal derivado del presupuesto base #${presupuestoBase.id}`,
+          moneda: presupuestoBase.moneda,
+          gastos_indirectos_pct: presupuestoBase.gastos_indirectos_pct,
+          beneficio_pct: presupuestoBase.beneficio_pct,
+          iva_pct: presupuestoBase.iva_pct,
+          estado: 'revisado',
+          total_presupuesto: totalModificado.toFixed(2),
+          created_by: userId,
+          aprobado_por: null,
+          fecha_aprobacion: null,
+        });
+      } else {
+        presupuestoModificado.es_oficial = true;
+        presupuestoModificado.nombre = `Presupuesto modificado · ${presupuestoBase.nombre}`;
+        presupuestoModificado.descripcion = `Snapshot formal derivado del presupuesto base #${presupuestoBase.id}`;
+        presupuestoModificado.moneda = presupuestoBase.moneda;
+        presupuestoModificado.gastos_indirectos_pct = presupuestoBase.gastos_indirectos_pct;
+        presupuestoModificado.beneficio_pct = presupuestoBase.beneficio_pct;
+        presupuestoModificado.iva_pct = presupuestoBase.iva_pct;
+        presupuestoModificado.estado = 'revisado';
+        presupuestoModificado.total_presupuesto = totalModificado.toFixed(2);
+        presupuestoModificado.aprobado_por = null;
+        presupuestoModificado.fecha_aprobacion = null;
+      }
+
+      presupuestoModificado = await presupuestoRepo.save(presupuestoModificado);
+      await presupuestoRepo
+        .createQueryBuilder()
+        .update(BimPresupuesto)
+        .set({ es_oficial: false })
+        .where('tenant_id = :tenantId', { tenantId })
+        .andWhere('tipo = :tipo', { tipo: 'modificado' })
+        .andWhere('presupuesto_base_id = :presupuestoBaseId', {
+          presupuestoBaseId: presupuestoBase.id,
+        })
+        .andWhere('id <> :id', { id: presupuestoModificado.id })
+        .execute();
+
+      const documentosFuente = await this.findDocumentosFuenteModificado(
+        presupuestoBase.id,
+        tenantId,
+      );
+      const fuenteRepo = manager.getRepository(BimPresupuestoModificadoFuente);
+      await fuenteRepo.delete({
+        tenant_id: tenantId,
+        presupuesto_id: presupuestoModificado.id,
+      });
+      if (documentosFuente.length) {
+        await fuenteRepo.save(
+          documentosFuente.map((documento) =>
+            fuenteRepo.create({
+              tenant_id: tenantId,
+              presupuesto_id: presupuestoModificado.id,
+              documento_id: documento.id,
+              tipo_documento: documento.tipo,
+            }),
+          ),
+        );
+      }
+
+      const capitulosExistentes = await capituloRepo.find({
+        where: { presupuesto_id: presupuestoModificado.id },
+        order: { orden: 'ASC', id: 'ASC' },
+      });
+      const capitulosByCodigo = new Map(
+        capitulosExistentes.map((capitulo) => [capitulo.codigo, capitulo]),
+      );
+      const capitulosActivos = new Set<string>();
+
+      const detalleAgrupado = new Map<string, PresupuestoModificadoDetalle[]>();
+      for (const item of detalle) {
+        const key = `${item.capitulo_codigo}::${item.capitulo_nombre}`;
+        const rows = detalleAgrupado.get(key) ?? [];
+        rows.push(item);
+        detalleAgrupado.set(key, rows);
+      }
+
+      for (const [key, rows] of detalleAgrupado.entries()) {
+        const first = rows[0];
+        let capitulo = capitulosByCodigo.get(first.capitulo_codigo) ?? null;
+
+        if (!capitulo) {
+          capitulo = capituloRepo.create({
+            presupuesto_id: presupuestoModificado.id,
+            codigo: first.capitulo_codigo,
+            nombre: first.capitulo_nombre,
+            orden: first.capitulo_orden,
+            parent_id: null,
+          });
+        } else {
+          capitulo.nombre = first.capitulo_nombre;
+          capitulo.orden = first.capitulo_orden;
+        }
+
+        capitulo = await capituloRepo.save(capitulo);
+        capitulosActivos.add(capitulo.id);
+
+        const partidasExistentes = await partidaRepo.find({
+          where: { capitulo_id: capitulo.id },
+          order: { orden: 'ASC', id: 'ASC' },
+        });
+        const partidasByCodigo = new Map(
+          partidasExistentes.map((partida) => [partida.codigo, partida]),
+        );
+        const partidasActivas = new Set<string>();
+
+        for (const row of rows.sort((a, b) => a.orden - b.orden)) {
+          let partida = partidasByCodigo.get(row.codigo) ?? null;
+
+          if (!partida) {
+            partida = partidaRepo.create({
+              capitulo_id: capitulo.id,
+              codigo: row.codigo,
+              descripcion: row.descripcion,
+              unidad: row.unidad,
+              cantidad: row.cantidad_modificada.toFixed(4),
+              precio_unitario: row.precio_unitario.toFixed(4),
+              observaciones: row.es_extra
+                ? `Partida extra originada desde presupuesto base #${presupuestoBase.id}`
+                : null,
+              es_extra: row.es_extra ? 1 : 0,
+              orden: row.orden,
+            });
+          } else {
+            partida.descripcion = row.descripcion;
+            partida.unidad = row.unidad;
+            partida.cantidad = row.cantidad_modificada.toFixed(4);
+            partida.precio_unitario = row.precio_unitario.toFixed(4);
+            partida.es_extra = row.es_extra ? 1 : 0;
+            partida.orden = row.orden;
+            partida.observaciones = row.es_extra
+              ? `Partida extra originada desde presupuesto base #${presupuestoBase.id}`
+              : null;
+          }
+
+          partida = await partidaRepo.save(partida);
+          partidasActivas.add(partida.id);
+        }
+
+        const partidasAEliminar = partidasExistentes.filter(
+          (partida) => !partidasActivas.has(partida.id),
+        );
+        if (partidasAEliminar.length) {
+          await partidaRepo.remove(partidasAEliminar);
+        }
+      }
+
+      const capitulosAEliminar = capitulosExistentes.filter(
+        (capitulo) => !capitulosActivos.has(capitulo.id),
+      );
+      if (capitulosAEliminar.length) {
+        await capituloRepo.remove(capitulosAEliminar);
+      }
+
+      await this.recalcularTotal(presupuestoModificado.id, tenantId, manager);
+
+      return this.getPresupuestoModificado(presupuestoBase.id, tenantId);
+    });
   }
 
   async generatePdf(id: string, tenantId: string) {
     const presupuesto = await this.findOne(id, tenantId);
     const tree = await this.findWithTree(id, tenantId);
+    const flatCapitulos = this.flattenCapituloTree(tree.capitulos);
 
     const doc = new PDFDocument({ margin: 36, size: 'A4' });
     const chunks: Buffer[] = [];
@@ -221,20 +571,15 @@ export class PresupuestosService {
       doc.on('end', () => resolve(Buffer.concat(chunks))),
     );
 
-    this.renderPdfHeader(doc, presupuesto, tree.capitulos.length);
-    this.renderPdfSummary(doc, presupuesto, tree.capitulos.reduce((sum, cap) => sum + (cap.partidas?.length ?? 0), 0));
+    this.renderPdfHeader(doc, presupuesto, flatCapitulos.length);
+    this.renderPdfSummary(
+      doc,
+      presupuesto,
+      flatCapitulos.reduce((sum, cap) => sum + (cap.partidas?.length ?? 0), 0),
+    );
 
-    for (const capitulo of tree.capitulos) {
-      this.ensurePdfSpace(doc, 70);
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(11)
-        .fillColor('#1f2937')
-        .text(`${capitulo.codigo}  ${capitulo.nombre}`);
-      doc.moveDown(0.3);
-
-      this.renderPdfPartidasTable(doc, capitulo.partidas ?? [], presupuesto.moneda);
-      doc.moveDown(0.8);
+    for (const capitulo of flatCapitulos) {
+      this.renderPdfCapitulo(doc, capitulo, presupuesto.moneda);
     }
 
     doc
@@ -276,16 +621,87 @@ export class PresupuestosService {
     userId: string,
     tenantId: string,
   ): Promise<BimPresupuesto> {
-    const p = await this.findOne(id, tenantId);
-    if (p.estado !== 'borrador' && p.estado !== 'revisado') {
+    let p = await this.findOne(id, tenantId);
+    if (p.tipo === 'modificado') {
+      await this.syncPresupuestoModificado(id, userId, tenantId);
+      p = await this.findOne(id, tenantId);
+    }
+    if (
+      p.estado !== 'borrador' &&
+      p.estado !== 'revisado' &&
+      p.estado !== 'aprobado'
+    ) {
       throw new BadRequestException(
-        'Solo se pueden aprobar presupuestos en borrador o revisado',
+        'Solo se pueden oficializar presupuestos en borrador, revisado o aprobado',
       );
     }
     p.estado = 'aprobado';
     p.aprobado_por = userId;
     p.fecha_aprobacion = new Date();
-    return this.presupuestoRepo.save(p);
+    p.es_oficial = true;
+    const saved = await this.presupuestoRepo.save(p);
+
+    if (saved.tipo === 'obra' || saved.tipo === 'sin_apu') {
+      await this.presupuestoRepo
+        .createQueryBuilder()
+        .update(BimPresupuesto)
+        .set({ es_oficial: false })
+        .where('tenant_id = :tenantId', { tenantId })
+        .andWhere('obra_id = :obraId', { obraId: saved.obra_id })
+        .andWhere('tipo IN (:...tipos)', { tipos: ['obra', 'sin_apu'] })
+        .andWhere('id <> :id', { id: saved.id })
+        .execute();
+    }
+
+    if (saved.tipo === 'modificado' && saved.presupuesto_base_id) {
+      await this.presupuestoRepo
+        .createQueryBuilder()
+        .update(BimPresupuesto)
+        .set({ es_oficial: false })
+        .where('tenant_id = :tenantId', { tenantId })
+        .andWhere('tipo = :tipo', { tipo: 'modificado' })
+        .andWhere('presupuesto_base_id = :presupuestoBaseId', {
+          presupuestoBaseId: saved.presupuesto_base_id,
+        })
+        .andWhere('id <> :id', { id: saved.id })
+        .execute();
+    }
+
+    return this.findOne(saved.id, tenantId);
+  }
+
+  async getFormalizacionContexto(obraId: string, tenantId: string) {
+    await this.findTenantObra(obraId, tenantId);
+    const originalOficial = await this.findPresupuestoOriginalOficial(
+      obraId,
+      tenantId,
+    );
+
+    if (!originalOficial) {
+      return {
+        original_oficial: null,
+        modificado_vigente: null,
+        fuentes_modificado: [],
+      };
+    }
+
+    const modificadoVigente = await this.presupuestoRepo.findOne({
+      where: {
+        tenant_id: tenantId,
+        presupuesto_base_id: originalOficial.id,
+        tipo: 'modificado',
+        es_oficial: true,
+      },
+      order: { version: 'DESC', updated_at: 'DESC' },
+    });
+
+    return {
+      original_oficial: originalOficial,
+      modificado_vigente: modificadoVigente,
+      fuentes_modificado: modificadoVigente
+        ? await this.listPresupuestoModificadoFuentes(modificadoVigente.id, tenantId)
+        : [],
+    };
   }
 
   async devolverABorrador(
@@ -300,6 +716,7 @@ export class PresupuestosService {
     }
 
     p.estado = 'borrador';
+    p.es_oficial = false;
     p.aprobado_por = null;
     p.fecha_aprobacion = null;
     return this.presupuestoRepo.save(p);
@@ -362,8 +779,8 @@ export class PresupuestosService {
     await this.assertPresupuestoEditable(cap.presupuesto_id, tenantId);
     return this.dataSource.transaction(async (manager) => {
       const partida = manager.create(BimPartida, {
-        capitulo_id: capituloId,
         ...dto,
+        capitulo_id: capituloId,
       });
       const savedPartida = await manager.save(BimPartida, partida);
 
@@ -475,9 +892,10 @@ export class PresupuestosService {
     tenantId: string,
   ) {
     const arbol = await this.findWithTree(presupuestoId, tenantId);
+    const flatCapitulos = this.flattenCapituloTree(arbol.capitulos);
 
     await this.dataSource.transaction(async (manager) => {
-      for (const capitulo of arbol.capitulos ?? []) {
+      for (const capitulo of flatCapitulos) {
         for (const partida of capitulo.partidas ?? []) {
           if (partida.precio_unitario_id) {
             await this.recalcularPrecioUnitarioPartida(partida.id, tenantId, manager);
@@ -847,8 +1265,13 @@ export class PresupuestosService {
       };
       otros_factores?: {
         usar_gastos_medicos?: boolean;
-      };
-    };
+  };
+};
+
+type PresupuestoTreeCapitulo = BimCapitulo & {
+  partidas: BimPartida[];
+  children: PresupuestoTreeCapitulo[];
+};
 
     const ivaModo = meta.iva?.modo ?? 'presupuesto_y_valuacion';
     const ivaPct = this.toNumber(meta.iva?.porcentaje ?? presupuesto.iva_pct) / 100;
@@ -920,6 +1343,52 @@ export class PresupuestosService {
     return Number.parseFloat(String(value ?? '0')) || 0;
   }
 
+  private flattenCapituloTree(
+    capitulos: PresupuestoTreeCapitulo[],
+  ): Array<PresupuestoTreeCapitulo & { depth: number }> {
+    const rows: Array<PresupuestoTreeCapitulo & { depth: number }> = [];
+
+    const walk = (nodes: PresupuestoTreeCapitulo[], depth: number) => {
+      for (const node of nodes) {
+        rows.push({ ...node, depth });
+        if (node.children?.length) {
+          walk(node.children, depth + 1);
+        }
+      }
+    };
+
+    walk(capitulos, 0);
+    return rows;
+  }
+
+  private async findDescendantCapituloIds(id: string, tenantId: string) {
+    const capitulos = await this.capituloRepo
+      .createQueryBuilder('capitulo')
+      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .where('presupuesto.tenant_id = :tenantId', { tenantId })
+      .select(['capitulo.id AS id', 'capitulo.parent_id AS parent_id'])
+      .getRawMany<{ id: string; parent_id: string | null }>();
+
+    const childrenByParent = new Map<string, string[]>();
+    for (const capitulo of capitulos) {
+      if (!capitulo.parent_id) continue;
+      const rows = childrenByParent.get(String(capitulo.parent_id)) ?? [];
+      rows.push(String(capitulo.id));
+      childrenByParent.set(String(capitulo.parent_id), rows);
+    }
+
+    const descendants: string[] = [];
+    const visit = (parentId: string) => {
+      for (const childId of childrenByParent.get(parentId) ?? []) {
+        descendants.push(childId);
+        visit(childId);
+      }
+    };
+
+    visit(String(id));
+    return descendants;
+  }
+
   private async recalcularTotalByCapitulo(
     capituloId: string,
     tenantId: string,
@@ -931,6 +1400,266 @@ export class PresupuestosService {
       throw new NotFoundException(`Capítulo #${capituloId} no encontrado`);
     }
     return this.recalcularTotal(capitulo.presupuesto_id, tenantId, manager);
+  }
+
+  private async buildPresupuestoModificadoDetalle(
+    presupuestoBase: BimPresupuesto,
+    tenantId: string,
+  ): Promise<PresupuestoModificadoDetalle[]> {
+    const capitulos = await this.capituloRepo.find({
+      where: { presupuesto_id: presupuestoBase.id },
+      order: { orden: 'ASC', id: 'ASC' },
+    });
+
+    const baseRows = (
+      await Promise.all(
+        capitulos.map(async (capitulo) => {
+          const partidas = await this.partidaRepo.find({
+            where: { capitulo_id: capitulo.id },
+            order: { orden: 'ASC', id: 'ASC' },
+          });
+
+          return partidas.map((partida) => ({ capitulo, partida }));
+        }),
+      )
+    ).flat();
+
+    const documentosValidos = await this.findDocumentosFuenteModificado(
+      presupuestoBase.id,
+      tenantId,
+    );
+    const documentoIds = documentosValidos.map((item) => item.id);
+
+    const variaciones = documentoIds.length
+      ? await this.reconsideracionRepo
+          .createQueryBuilder('rec')
+          .where('rec.tenant_id = :tenantId', { tenantId })
+          .andWhere('rec.documento_id IN (:...documentoIds)', { documentoIds })
+          .orderBy('rec.id', 'ASC')
+          .getMany()
+      : [];
+
+    const aumentosMap = new Map<string, number>();
+    const disminucionesMap = new Map<string, number>();
+    const extrasMap = new Map<
+      string,
+      {
+        partida_base_id: string;
+        capitulo_base_id: string;
+        codigo: string;
+        descripcion: string;
+        unidad: string;
+        orden: number;
+        precio_unitario: number;
+        cantidad_extra: number;
+      }
+    >();
+
+    for (const item of variaciones) {
+      const partidaId = String(item.partida_id);
+      const cantidad = Math.abs(this.toNumber(item.cantidad_variacion));
+
+      if (item.tipo === 'aumento') {
+        aumentosMap.set(partidaId, (aumentosMap.get(partidaId) ?? 0) + cantidad);
+        continue;
+      }
+
+      if (item.tipo === 'disminucion') {
+        disminucionesMap.set(
+          partidaId,
+          (disminucionesMap.get(partidaId) ?? 0) + cantidad,
+        );
+        continue;
+      }
+
+      if (item.tipo === 'extra') {
+        const partidaExtra = await this.partidaRepo.findOne({
+          where: { id: item.partida_id },
+        });
+        if (!partidaExtra) continue;
+
+        extrasMap.set(partidaId, {
+          partida_base_id: partidaId,
+          capitulo_base_id: String(partidaExtra.capitulo_id),
+          codigo: partidaExtra.codigo,
+          descripcion: partidaExtra.descripcion,
+          unidad: partidaExtra.unidad,
+          orden: partidaExtra.orden,
+          precio_unitario: this.toNumber(item.precio_unitario || partidaExtra.precio_unitario),
+          cantidad_extra: cantidad,
+        });
+      }
+    }
+
+    const detalleBase = baseRows.map(({ capitulo, partida }) => {
+      const cantidadOriginal = this.toNumber(partida.cantidad);
+      const precioUnitario = this.toNumber(partida.precio_unitario);
+      const cantidadAumento = aumentosMap.get(String(partida.id)) ?? 0;
+      const cantidadDisminucion = disminucionesMap.get(String(partida.id)) ?? 0;
+      const cantidadModificada = Math.max(
+        cantidadOriginal + cantidadAumento - cantidadDisminucion,
+        0,
+      );
+
+      return {
+        partida_base_id: String(partida.id),
+        capitulo_base_id: String(capitulo.id),
+        codigo: partida.codigo,
+        descripcion: partida.descripcion,
+        unidad: partida.unidad,
+        orden: partida.orden,
+        capitulo_codigo: capitulo.codigo,
+        capitulo_nombre: capitulo.nombre,
+        capitulo_orden: capitulo.orden,
+        cantidad_original: cantidadOriginal,
+        precio_unitario: precioUnitario,
+        cantidad_aumento: cantidadAumento,
+        cantidad_disminucion: cantidadDisminucion,
+        cantidad_extra: 0,
+        cantidad_modificada: cantidadModificada,
+        monto_original: cantidadOriginal * precioUnitario,
+        monto_modificado: cantidadModificada * precioUnitario,
+        es_extra: false,
+      } as PresupuestoModificadoDetalle;
+    });
+
+    const capitulosById = new Map(
+      capitulos.map((capitulo) => [String(capitulo.id), capitulo]),
+    );
+
+    const detalleExtras = Array.from(extrasMap.values()).map((item) => {
+      const capitulo = capitulosById.get(item.capitulo_base_id);
+      return {
+        partida_base_id: item.partida_base_id,
+        capitulo_base_id: item.capitulo_base_id,
+        codigo: item.codigo,
+        descripcion: item.descripcion,
+        unidad: item.unidad,
+        orden: item.orden,
+        capitulo_codigo: capitulo?.codigo ?? 'EX',
+        capitulo_nombre: capitulo?.nombre ?? 'Obras extras',
+        capitulo_orden: capitulo?.orden ?? 999,
+        cantidad_original: 0,
+        precio_unitario: item.precio_unitario,
+        cantidad_aumento: 0,
+        cantidad_disminucion: 0,
+        cantidad_extra: item.cantidad_extra,
+        cantidad_modificada: item.cantidad_extra,
+        monto_original: 0,
+        monto_modificado: item.cantidad_extra * item.precio_unitario,
+        es_extra: true,
+      } as PresupuestoModificadoDetalle;
+    });
+
+    return [...detalleBase, ...detalleExtras].sort((a, b) => {
+      if (a.capitulo_orden !== b.capitulo_orden) {
+        return a.capitulo_orden - b.capitulo_orden;
+      }
+      if (a.capitulo_codigo !== b.capitulo_codigo) {
+        return a.capitulo_codigo.localeCompare(b.capitulo_codigo);
+      }
+      if (a.orden !== b.orden) {
+        return a.orden - b.orden;
+      }
+      return a.codigo.localeCompare(b.codigo);
+    });
+  }
+
+  private async resolvePresupuestoBase(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto> {
+    const presupuesto = await this.findOne(presupuestoId, tenantId);
+    if (
+      presupuesto.tipo === 'modificado' &&
+      presupuesto.presupuesto_base_id
+    ) {
+      return this.findOne(presupuesto.presupuesto_base_id, tenantId);
+    }
+
+    return presupuesto;
+  }
+
+  private async findPresupuestoOriginalOficial(
+    obraId: string,
+    tenantId: string,
+  ): Promise<BimPresupuesto | null> {
+    const oficial = await this.presupuestoRepo.findOne({
+      where: {
+        tenant_id: tenantId,
+        obra_id: obraId,
+        es_oficial: true,
+        tipo: 'obra',
+      },
+      order: { version: 'DESC', updated_at: 'DESC' },
+    });
+    if (oficial) return oficial;
+
+    const sinApuOficial = await this.presupuestoRepo.findOne({
+      where: {
+        tenant_id: tenantId,
+        obra_id: obraId,
+        es_oficial: true,
+        tipo: 'sin_apu',
+      },
+      order: { version: 'DESC', updated_at: 'DESC' },
+    });
+    if (sinApuOficial) return sinApuOficial;
+
+    return null;
+  }
+
+  private async findDocumentosFuenteModificado(
+    presupuestoBaseId: string,
+    tenantId: string,
+  ): Promise<BimReconsideracionDocumento[]> {
+    return this.reconsideracionDocumentoRepo.find({
+      where: {
+        tenant_id: tenantId,
+        presupuesto_id: presupuestoBaseId,
+      },
+      order: { numero: 'ASC', id: 'ASC' },
+    }).then((rows) =>
+      rows.filter(
+        (item) =>
+          ['aumento', 'disminucion', 'extra'].includes(item.tipo) &&
+          ['revisado', 'aprobado'].includes(item.status),
+      ),
+    );
+  }
+
+  private async listPresupuestoModificadoFuentes(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<
+    Array<{
+      documento_id: string;
+      tipo: string;
+      numero: number;
+      fecha: string;
+      titulo: string;
+      status: string;
+    }>
+  > {
+    const fuentes = await this.presupuestoModificadoFuenteRepo.find({
+      where: {
+        tenant_id: tenantId,
+        presupuesto_id: presupuestoId,
+      },
+      relations: ['documento'],
+      order: { id: 'ASC' },
+    });
+
+    return fuentes
+      .filter((item) => item.documento)
+      .map((item) => ({
+        documento_id: item.documento.id,
+        tipo: item.documento.tipo,
+        numero: item.documento.numero,
+        fecha: item.documento.fecha,
+        titulo: item.documento.titulo,
+        status: item.documento.status,
+      }));
   }
 
   private async assertPresupuestoEditable(
@@ -1109,6 +1838,36 @@ export class PresupuestosService {
 
       doc.y = rowTop + rowHeight;
     });
+  }
+
+  private renderPdfCapitulo(
+    doc: PDFKit.PDFDocument,
+    capitulo: PresupuestoTreeCapitulo & { depth: number },
+    currency: string,
+  ) {
+    this.ensurePdfSpace(doc, 70);
+    const indent = capitulo.depth * 18;
+    doc
+      .font(capitulo.depth === 0 ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(capitulo.depth === 0 ? 11 : 10)
+      .fillColor('#1f2937')
+      .text(`${capitulo.codigo}  ${capitulo.nombre}`, doc.page.margins.left + indent, doc.y, {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right - indent,
+      });
+    doc.moveDown(0.3);
+
+    if (capitulo.partidas?.length) {
+      this.renderPdfPartidasTable(doc, capitulo.partidas ?? [], currency);
+      doc.moveDown(0.8);
+      return;
+    }
+
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(8)
+      .fillColor('#6b7280')
+      .text('Sin partidas directas en este capítulo', doc.page.margins.left + indent + 12, doc.y);
+    doc.moveDown(0.8);
   }
 
   private ensurePdfSpace(doc: PDFKit.PDFDocument, requiredHeight: number) {

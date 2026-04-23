@@ -116,7 +116,9 @@ export class ObrasService {
 
     if (cierre.resumen.estado_cierre !== 'listo_para_cerrar') {
       throw new BadRequestException(
-        'La obra no puede cerrarse todavía porque existen diferencias físicas o económicas.',
+        cierre.resumen.estado_cierre === 'pendiente_formalizacion'
+          ? 'La obra no puede cerrarse porque existen documentos BIM en borrador pendientes de formalización.'
+          : 'La obra no puede cerrarse todavía porque existen diferencias físicas o económicas.',
       );
     }
 

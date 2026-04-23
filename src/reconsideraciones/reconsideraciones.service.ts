@@ -13,6 +13,7 @@ import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
 import { BimCapitulo } from '../database/entities/bim/bim-capitulo.entity';
+import { PresupuestosService } from '../presupuestos/presupuestos.service';
 import { CreateReconsideracionDocumentoDto } from './dto/create-reconsideracion-documento.dto';
 import { UpdateReconsideracionDocumentoDto } from './dto/update-reconsideracion-documento.dto';
 import { SaveReconsideracionDetallesDto } from './dto/save-reconsideracion-detalles.dto';
@@ -60,6 +61,7 @@ export class ReconsideracionesService {
     @InjectRepository(BimPresupuesto)
     private readonly presupuestoRepo: Repository<BimPresupuesto>,
     private readonly dataSource: DataSource,
+    private readonly presupuestosService: PresupuestosService,
   ) {}
 
   async createDocumento(
@@ -84,6 +86,9 @@ export class ReconsideracionesService {
       }
       if (String(certificacion.presupuesto_id) !== String(presupuesto.id)) {
         throw new BadRequestException('La valuación no pertenece al presupuesto seleccionado');
+      }
+      if (!['revisada', 'aprobada', 'facturada'].includes(certificacion.estado)) {
+        throw new BadRequestException('La reconsideración solo puede basarse en valuaciones formalizadas');
       }
       certificacionId = certificacion.id;
     }
@@ -138,7 +143,10 @@ export class ReconsideracionesService {
     };
 
     if (tipo) where.tipo = tipo;
-    if (presupuestoId) where.presupuesto_id = presupuestoId;
+    if (presupuestoId) {
+      const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
+      where.presupuesto_id = presupuesto.id;
+    }
 
     return this.documentoRepo.find({
       where,
@@ -201,6 +209,9 @@ export class ReconsideracionesService {
         if (String(certificacion.presupuesto_id) !== String(documento.presupuesto_id)) {
           throw new BadRequestException('La valuación no pertenece al presupuesto seleccionado');
         }
+        if (!['revisada', 'aprobada', 'facturada'].includes(certificacion.estado)) {
+          throw new BadRequestException('La reconsideración solo puede basarse en valuaciones formalizadas');
+        }
         documento.certificacion_id = certificacion.id;
       }
     }
@@ -238,7 +249,17 @@ export class ReconsideracionesService {
       documento.approved_at = null;
     }
 
-    return this.documentoRepo.save(documento);
+    const saved = await this.documentoRepo.save(documento);
+
+    if (['aumento', 'disminucion', 'extra'].includes(saved.tipo)) {
+      await this.presupuestosService.syncPresupuestoModificado(
+        saved.presupuesto_id,
+        userId,
+        tenantId,
+      );
+    }
+
+    return saved;
   }
 
   async getDocumentoResumen(id: string, tenantId: string) {
@@ -307,13 +328,20 @@ export class ReconsideracionesService {
     const totalDisminucionesActuales = detalle.reduce((sum, item) => sum + this.toNumber(item.monto_disminucion_actual), 0);
     const totalDisminucionesPrevias = detalle.reduce((sum, item) => sum + (this.toNumber(item.total_disminucion_acumulada) - this.toNumber(item.monto_disminucion_actual)), 0);
     const totalDisminuciones = totalDisminucionesPrevias + totalDisminucionesActuales;
-    const totalModificado = detalle.reduce((sum, item) => sum + this.toNumber(item.total_modificado), 0);
+    const totalExtras = await this.sumMontoByTipo(
+      documento.presupuesto_id,
+      tenantId,
+      'extra',
+    );
+    const totalModificado =
+      detalle.reduce((sum, item) => sum + this.toNumber(item.total_modificado), 0) +
+      totalExtras;
 
     return {
       documento,
       resumen: {
         original: totalOriginal.toFixed(2),
-        extras: '0.00',
+        extras: totalExtras.toFixed(2),
         aumentos_anteriores: totalAumentosPrevios.toFixed(2),
         aumentos_actuales: totalAumentosActuales.toFixed(2),
         aumentos_acumulados: (totalAumentosPrevios + totalAumentosActuales).toFixed(2),
@@ -423,7 +451,27 @@ export class ReconsideracionesService {
     if (!presupuesto) {
       throw new NotFoundException(`Presupuesto #${id} no encontrado`);
     }
-    return presupuesto;
+
+    if (presupuesto.tipo !== 'modificado') {
+      return presupuesto;
+    }
+
+    if (!presupuesto.presupuesto_base_id) {
+      throw new BadRequestException(
+        'El presupuesto modificado no tiene un presupuesto base asociado para operar.',
+      );
+    }
+
+    const presupuestoBase = await this.presupuestoRepo.findOne({
+      where: { id: presupuesto.presupuesto_base_id, tenant_id: tenantId },
+    });
+    if (!presupuestoBase) {
+      throw new NotFoundException(
+        `Presupuesto base #${presupuesto.presupuesto_base_id} no encontrado`,
+      );
+    }
+
+    return presupuestoBase;
   }
 
   private async findTenantCertificacion(id: string, tenantId: string) {
@@ -445,14 +493,15 @@ export class ReconsideracionesService {
   }
 
   private async findPresupuestoPartidas(presupuestoId: string, tenantId: string): Promise<PartidaBaseRow[]> {
-    await this.findTenantPresupuesto(presupuestoId, tenantId);
+    const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
 
     return this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
       .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
-      .where('presupuesto.id = :presupuestoId', { presupuestoId })
+      .where('presupuesto.id = :presupuestoId', { presupuestoId: presupuesto.id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .andWhere('(partida.es_extra = 0 OR partida.es_extra IS NULL)')
       .select([
         'partida.id AS id',
         'partida.codigo AS codigo',
@@ -490,37 +539,33 @@ export class ReconsideracionesService {
 
     if (previosSolo) {
       query.andWhere(
-        '(doc.numero < :numero OR (doc.numero = :numero AND doc.id < :documentoId))',
+        '((doc.numero < :numero OR (doc.numero = :numero AND doc.id < :documentoId)) AND doc.status IN (:...statuses))',
         { numero: documento.numero, documentoId: documento.id },
       );
     } else {
       query.andWhere(
-        '(doc.numero < :numero OR (doc.numero = :numero AND doc.id <= :documentoId))',
-        { numero: documento.numero, documentoId: documento.id },
+        '(((doc.numero < :numero OR (doc.numero = :numero AND doc.id < :documentoId)) AND doc.status IN (:...statuses)) OR doc.id = :documentoId)',
+        {
+          numero: documento.numero,
+          documentoId: documento.id,
+          statuses: ['revisado', 'aprobado'],
+        },
       );
+      return this.mapAcumulados(await query.getRawMany<{
+        partida_id: string;
+        tipo: string;
+        cantidad: string;
+        monto: string;
+      }>());
     }
 
-    const rows = await query.getRawMany<{
+    const rows = await query.setParameter('statuses', ['revisado', 'aprobado']).getRawMany<{
       partida_id: string;
       tipo: string;
       cantidad: string;
       monto: string;
     }>();
-    const map: AcumuladoMap = new Map();
-
-    for (const row of rows) {
-      const current = map.get(String(row.partida_id)) ?? this.emptyAcumulado();
-      if (row.tipo === 'disminucion') {
-        current.cantidadDisminucion += this.toNumber(row.cantidad);
-        current.montoDisminucion += this.toNumber(row.monto);
-      } else {
-        current.cantidadAumento += this.toNumber(row.cantidad);
-        current.montoAumento += this.toNumber(row.monto);
-      }
-      map.set(String(row.partida_id), current);
-    }
-
-    return map;
+    return this.mapAcumulados(rows);
   }
 
   private async getDocumentoPrecioResumen(
@@ -587,8 +632,10 @@ export class ReconsideracionesService {
     documento: BimReconsideracionDocumento,
     tenantId: string,
   ) {
-    const partidas = await this.findPresupuestoPartidas(documento.presupuesto_id, tenantId);
-    const extras = partidas.filter((partida: any) => Number(partida.es_extra ?? 0) === 1);
+    const extras = await this.findPresupuestoExtraPartidas(
+      documento.presupuesto_id,
+      tenantId,
+    );
     const actuales = await this.reconsideracionRepo.find({
       where: { documento_id: documento.id, tenant_id: tenantId },
       order: { id: 'ASC' },
@@ -616,18 +663,21 @@ export class ReconsideracionesService {
     });
 
     const totalExtras = detalle.reduce((sum, item) => sum + this.toNumber(item.monto_extra), 0);
-    const presupuesto = await this.findTenantPresupuesto(documento.presupuesto_id, tenantId);
+    const original = await this.sumMontoPresupuestoOriginal(
+      documento.presupuesto_id,
+      tenantId,
+    );
     const aumentos = await this.sumMontoByTipo(documento.presupuesto_id, tenantId, 'aumento');
     const disminuciones = await this.sumMontoByTipo(documento.presupuesto_id, tenantId, 'disminucion');
 
     return {
       documento,
       resumen: {
-        original: presupuesto.total_presupuesto,
+        original: original.toFixed(2),
         extras: totalExtras.toFixed(2),
         aumentos: aumentos.toFixed(2),
         disminuciones: disminuciones.toFixed(2),
-        modificado: (this.toNumber(presupuesto.total_presupuesto) + totalExtras + aumentos - disminuciones).toFixed(2),
+        modificado: (original + totalExtras + aumentos - disminuciones).toFixed(2),
       },
       detalle,
     };
@@ -812,10 +862,37 @@ export class ReconsideracionesService {
         await recRepo.save(row);
       }
 
-      await this.recalcularPresupuesto(manager, presupuesto.id, tenantId);
     });
 
     return this.getDocumentoExtrasResumen(documento, tenantId);
+  }
+
+  private async findPresupuestoExtraPartidas(
+    presupuestoId: string,
+    tenantId: string,
+  ): Promise<PartidaBaseRow[]> {
+    const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
+
+    return this.partidaRepo
+      .createQueryBuilder('partida')
+      .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
+      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .where('presupuesto.id = :presupuestoId', { presupuestoId: presupuesto.id })
+      .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .andWhere('partida.es_extra = 1')
+      .select([
+        'partida.id AS id',
+        'partida.codigo AS codigo',
+        'partida.descripcion AS descripcion',
+        'partida.unidad AS unidad',
+        'partida.cantidad AS cantidad',
+        'partida.precio_unitario AS precio_unitario',
+        'partida.importe_total AS importe_total',
+        'partida.orden AS orden',
+      ])
+      .orderBy('partida.orden', 'ASC')
+      .addOrderBy('partida.id', 'ASC')
+      .getRawMany<PartidaBaseRow>();
   }
 
   private async buildBasePrecioMap(
@@ -856,7 +933,7 @@ export class ReconsideracionesService {
   private async sumMontoByTipo(
     presupuestoId: string,
     tenantId: string,
-    tipo: 'aumento' | 'disminucion',
+    tipo: 'aumento' | 'disminucion' | 'extra',
   ) {
     const result = await this.reconsideracionRepo
       .createQueryBuilder('rec')
@@ -864,41 +941,55 @@ export class ReconsideracionesService {
       .where('doc.tenant_id = :tenantId', { tenantId })
       .andWhere('doc.presupuesto_id = :presupuestoId', { presupuestoId })
       .andWhere('doc.tipo = :tipo', { tipo })
+      .andWhere('doc.status IN (:...statuses)', {
+        statuses: ['revisado', 'aprobado'],
+      })
       .select('SUM(ABS(rec.monto_variacion))', 'total')
       .getRawOne<{ total?: string }>();
 
     return this.toNumber(result?.total ?? '0');
   }
 
-  private async recalcularPresupuesto(manager: any, presupuestoId: string, tenantId: string) {
-    const partidaRepo = manager.getRepository(BimPartida);
-    const presupuestoRepo = manager.getRepository(BimPresupuesto);
+  private async sumMontoPresupuestoOriginal(
+    presupuestoId: string,
+    tenantId: string,
+  ) {
+    const result = await this.partidaRepo
+      .createQueryBuilder('partida')
+      .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
+      .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
+      .where('presupuesto.id = :presupuestoId', { presupuestoId })
+      .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
+      .andWhere('(partida.es_extra = 0 OR partida.es_extra IS NULL)')
+      .select('SUM(partida.importe_total)', 'total')
+      .getRawOne<{ total?: string }>();
 
-    const result = await partidaRepo
-      .createQueryBuilder('p')
-      .innerJoin('bim_capitulos', 'c', 'c.id = p.capitulo_id')
-      .where('c.presupuesto_id = :presupuestoId', { presupuestoId })
-      .select('SUM(p.importe_total)', 'total')
-      .getRawOne();
+    return this.toNumber(result?.total ?? '0');
+  }
 
-    const presupuesto = await presupuestoRepo.findOne({
-      where: { id: presupuestoId, tenant_id: tenantId },
-    });
+  private mapAcumulados(
+    rows: Array<{
+      partida_id: string;
+      tipo: string;
+      cantidad: string;
+      monto: string;
+    }>,
+  ) {
+    const map: AcumuladoMap = new Map();
 
-    if (!presupuesto) {
-      throw new NotFoundException(`Presupuesto #${presupuestoId} no encontrado`);
+    for (const row of rows) {
+      const current = map.get(String(row.partida_id)) ?? this.emptyAcumulado();
+      if (row.tipo === 'disminucion') {
+        current.cantidadDisminucion += this.toNumber(row.cantidad);
+        current.montoDisminucion += this.toNumber(row.monto);
+      } else {
+        current.cantidadAumento += this.toNumber(row.cantidad);
+        current.montoAumento += this.toNumber(row.monto);
+      }
+      map.set(String(row.partida_id), current);
     }
 
-    const totalPartidas = this.toNumber((result as { total?: string } | null)?.total ?? '0');
-    const gastosIndirectos = this.toNumber(presupuesto.gastos_indirectos_pct) / 100;
-    const beneficio = this.toNumber(presupuesto.beneficio_pct) / 100;
-    const iva = this.toNumber(presupuesto.iva_pct) / 100;
-
-    presupuesto.total_presupuesto = (
-      totalPartidas * (1 + gastosIndirectos + beneficio) * (1 + iva)
-    ).toFixed(2);
-
-    await presupuestoRepo.save(presupuesto);
+    return map;
   }
 
   private emptyAcumulado() {

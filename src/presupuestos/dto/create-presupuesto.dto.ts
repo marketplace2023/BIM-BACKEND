@@ -12,6 +12,10 @@ import { Type } from 'class-transformer';
 export class CreatePartidaDto {
   @IsOptional()
   @IsString()
+  capitulo_id?: string;
+
+  @IsOptional()
+  @IsString()
   precio_unitario_id?: string;
 
   @IsString()
@@ -107,7 +111,7 @@ export class CreatePresupuestoDto {
   obra_id: string;
 
   @IsOptional()
-  @IsIn(['obra', 'orientativo', 'sin_apu'])
+  @IsIn(['obra', 'orientativo', 'sin_apu', 'modificado'])
   tipo?: string;
 
   @IsString()

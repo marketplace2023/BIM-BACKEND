@@ -37,6 +37,9 @@ type AcumuladoValuacion = {
   monto: number;
 };
 
+const MEDICION_STATUSES_ALLOWED_FOR_CERTIFICACION = ['revisado', 'aprobado'] as const;
+const CERTIFICACION_STATUSES_FOR_ACCUMULATED = ['revisada', 'aprobada', 'facturada'] as const;
+
 @Injectable()
 export class CertificacionesService {
   constructor(
@@ -68,17 +71,23 @@ export class CertificacionesService {
     let medicionDocumentoId: string | null = null;
     let lineasPrecargadas: CreateLineaCertificacionDto[] = [];
 
-    if (dto.medicion_documento_id) {
-      const medicion = await this.findTenantMedicionDocumento(dto.medicion_documento_id, tenantId);
-      if (String(medicion.obra_id) !== String(dto.obra_id)) {
-        throw new BadRequestException('La medición no pertenece a la obra seleccionada');
-      }
-      if (String(medicion.presupuesto_id) !== String(presupuesto.id)) {
-        throw new BadRequestException('La medición no pertenece al presupuesto seleccionado');
-      }
-      medicionDocumentoId = medicion.id;
-      lineasPrecargadas = await this.buildLineasFromMedicion(medicion.id, presupuesto.id, tenantId);
+    if (!dto.medicion_documento_id) {
+      throw new BadRequestException('La valuación requiere una medición base');
     }
+
+    const medicion = await this.findTenantMedicionDocumento(dto.medicion_documento_id, tenantId);
+    if (String(medicion.obra_id) !== String(dto.obra_id)) {
+      throw new BadRequestException('La medición no pertenece a la obra seleccionada');
+    }
+    if (String(medicion.presupuesto_id) !== String(presupuesto.id)) {
+      throw new BadRequestException('La medición no pertenece al presupuesto seleccionado');
+    }
+    if (!MEDICION_STATUSES_ALLOWED_FOR_CERTIFICACION.includes(medicion.status as (typeof MEDICION_STATUSES_ALLOWED_FOR_CERTIFICACION)[number])) {
+      throw new BadRequestException('Solo puedes valorar mediciones revisadas o aprobadas');
+    }
+
+    medicionDocumentoId = medicion.id;
+    lineasPrecargadas = await this.buildLineasFromMedicion(medicion.id, presupuesto.id, tenantId);
 
     return this.dataSource.transaction(async (manager) => {
       // Obtener el siguiente número correlativo por obra
@@ -192,7 +201,8 @@ export class CertificacionesService {
     };
 
     if (presupuestoId) {
-      where.presupuesto_id = presupuestoId;
+      const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
+      where.presupuesto_id = presupuesto.id;
     }
 
     return this.certRepo.find({
@@ -237,17 +247,21 @@ export class CertificacionesService {
     if (dto.periodo_hasta) cert.periodo_hasta = dto.periodo_hasta as unknown as Date;
     if (dto.medicion_documento_id !== undefined) {
       if (!dto.medicion_documento_id) {
-        cert.medicion_documento_id = null;
-      } else {
-        const medicion = await this.findTenantMedicionDocumento(dto.medicion_documento_id, tenantId);
-        if (String(medicion.obra_id) !== String(cert.obra_id)) {
-          throw new BadRequestException('La medición no pertenece a la obra seleccionada');
-        }
-        if (String(medicion.presupuesto_id) !== String(cert.presupuesto_id)) {
-          throw new BadRequestException('La medición no pertenece al presupuesto seleccionado');
-        }
-        cert.medicion_documento_id = medicion.id;
+        throw new BadRequestException('La valuación requiere una medición base');
       }
+
+      const medicion = await this.findTenantMedicionDocumento(dto.medicion_documento_id, tenantId);
+      if (String(medicion.obra_id) !== String(cert.obra_id)) {
+        throw new BadRequestException('La medición no pertenece a la obra seleccionada');
+      }
+      if (String(medicion.presupuesto_id) !== String(cert.presupuesto_id)) {
+        throw new BadRequestException('La medición no pertenece al presupuesto seleccionado');
+      }
+      if (!MEDICION_STATUSES_ALLOWED_FOR_CERTIFICACION.includes(medicion.status as (typeof MEDICION_STATUSES_ALLOWED_FOR_CERTIFICACION)[number])) {
+        throw new BadRequestException('Solo puedes valorar mediciones revisadas o aprobadas');
+      }
+
+      cert.medicion_documento_id = medicion.id;
     }
     if (dto.observaciones !== undefined) cert.observaciones = dto.observaciones || null;
 
@@ -460,7 +474,27 @@ export class CertificacionesService {
     });
     if (!presupuesto)
       throw new NotFoundException(`Presupuesto #${id} no encontrado`);
-    return presupuesto;
+
+    if (presupuesto.tipo !== 'modificado') {
+      return presupuesto;
+    }
+
+    if (!presupuesto.presupuesto_base_id) {
+      throw new BadRequestException(
+        'El presupuesto modificado no tiene un presupuesto base asociado para operar.',
+      );
+    }
+
+    const presupuestoBase = await this.presupuestoRepo.findOne({
+      where: { id: presupuesto.presupuesto_base_id, tenant_id: tenantId },
+    });
+    if (!presupuestoBase) {
+      throw new NotFoundException(
+        `Presupuesto base #${presupuesto.presupuesto_base_id} no encontrado`,
+      );
+    }
+
+    return presupuestoBase;
   }
 
   private async findTenantMedicionDocumento(id: string, tenantId: string) {
@@ -477,13 +511,13 @@ export class CertificacionesService {
     presupuestoId: string,
     tenantId: string,
   ): Promise<PartidaBaseRow[]> {
-    await this.findTenantPresupuesto(presupuestoId, tenantId);
+    const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
 
     return this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
       .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
-      .where('presupuesto.id = :presupuestoId', { presupuestoId })
+      .where('presupuesto.id = :presupuestoId', { presupuestoId: presupuesto.id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
       .select([
         'partida.id AS id',
@@ -510,6 +544,9 @@ export class CertificacionesService {
       .where('cert.tenant_id = :tenantId', { tenantId })
       .andWhere('cert.presupuesto_id = :presupuestoId', {
         presupuestoId: cert.presupuesto_id,
+      })
+      .andWhere('cert.estado IN (:...allowedEstados)', {
+        allowedEstados: [...CERTIFICACION_STATUSES_FOR_ACCUMULATED],
       })
       .andWhere(
         '(cert.numero < :numero OR (cert.numero = :numero AND cert.id < :id))',

@@ -46,6 +46,7 @@ export class ReportesController {
     @Query('type') type: string,
     @Query('obraId') obraId: string,
     @Query('presupuestoId') presupuestoId: string | undefined,
+    @Query('documentoId') documentoId: string | undefined,
     @Request() req: any,
     @Res() res: Response,
   ) {
@@ -54,6 +55,7 @@ export class ReportesController {
       req.user.tenant_id,
       obraId,
       presupuestoId,
+      documentoId,
     );
 
     res.setHeader('Content-Type', 'application/pdf');

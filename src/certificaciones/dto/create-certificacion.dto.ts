@@ -36,9 +36,9 @@ export class CreateCertificacionDto {
   @IsNotEmpty()
   presupuesto_id: string;
 
-  @IsOptional()
   @IsString()
-  medicion_documento_id?: string;
+  @IsNotEmpty()
+  medicion_documento_id: string;
 
   @IsDateString()
   periodo_desde: string;

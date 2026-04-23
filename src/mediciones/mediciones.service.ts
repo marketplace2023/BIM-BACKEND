@@ -27,6 +27,8 @@ type PartidaBaseRow = {
   orden: number;
 };
 
+const MEDICION_STATUSES_FOR_ACCUMULATED = ['revisado', 'aprobado'] as const;
+
 @Injectable()
 export class MedicionesService {
   constructor(
@@ -93,7 +95,8 @@ export class MedicionesService {
     };
 
     if (presupuestoId) {
-      where.presupuesto_id = presupuestoId;
+      const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
+      where.presupuesto_id = presupuesto.id;
     }
 
     return this.documentoRepo.find({
@@ -173,14 +176,16 @@ export class MedicionesService {
       documento.approved_at = null;
     }
 
-    return this.documentoRepo.save(documento);
+    const saved = await this.documentoRepo.save(documento);
+    await this.recalculatePresupuestoSequence(documento.presupuesto_id, tenantId);
+
+    return saved;
   }
 
   async getDocumentoResumen(id: string, tenantId: string) {
     const documento = await this.findDocumento(id, tenantId);
     const partidas = await this.findPresupuestoPartidas(documento.presupuesto_id, tenantId);
     const medicionesPrevias = await this.buildAcumulados(documento, tenantId, true);
-    const medicionesTodas = await this.buildAcumulados(documento, tenantId, false);
     const actuales = await this.medicionRepo.find({
       where: { documento_id: documento.id, tenant_id: tenantId },
       order: { id: 'ASC' },
@@ -193,7 +198,7 @@ export class MedicionesService {
       const actual = actualesByPartida.get(String(partida.id));
       const anterior = medicionesPrevias.get(String(partida.id)) ?? 0;
       const actualCantidad = actual ? this.toNumber(actual.cantidad_actual) : 0;
-      const acumulada = medicionesTodas.get(String(partida.id)) ?? 0;
+      const acumulada = anterior + actualCantidad;
       const avance = cantidadPresupuestada > 0 ? (acumulada / cantidadPresupuestada) * 100 : 0;
       const diferencia = acumulada - cantidadPresupuestada;
       const estado = cantidadPresupuestada === 0 && acumulada > 0
@@ -325,7 +330,27 @@ export class MedicionesService {
       where: { id, tenant_id: tenantId },
     });
     if (!presupuesto) throw new NotFoundException(`Presupuesto #${id} no encontrado`);
-    return presupuesto;
+
+    if (presupuesto.tipo !== 'modificado') {
+      return presupuesto;
+    }
+
+    if (!presupuesto.presupuesto_base_id) {
+      throw new BadRequestException(
+        'El presupuesto modificado no tiene un presupuesto base asociado para operar.',
+      );
+    }
+
+    const presupuestoBase = await this.presupuestoRepo.findOne({
+      where: { id: presupuesto.presupuesto_base_id, tenant_id: tenantId },
+    });
+    if (!presupuestoBase) {
+      throw new NotFoundException(
+        `Presupuesto base #${presupuesto.presupuesto_base_id} no encontrado`,
+      );
+    }
+
+    return presupuestoBase;
   }
 
   private async nextNumero(tenantId: string, presupuestoId: string) {
@@ -337,13 +362,13 @@ export class MedicionesService {
   }
 
   private async findPresupuestoPartidas(presupuestoId: string, tenantId: string): Promise<PartidaBaseRow[]> {
-    await this.findTenantPresupuesto(presupuestoId, tenantId);
+    const presupuesto = await this.findTenantPresupuesto(presupuestoId, tenantId);
 
     return this.partidaRepo
       .createQueryBuilder('partida')
       .innerJoin(BimCapitulo, 'capitulo', 'capitulo.id = partida.capitulo_id')
       .innerJoin(BimPresupuesto, 'presupuesto', 'presupuesto.id = capitulo.presupuesto_id')
-      .where('presupuesto.id = :presupuestoId', { presupuestoId })
+      .where('presupuesto.id = :presupuestoId', { presupuestoId: presupuesto.id })
       .andWhere('presupuesto.tenant_id = :tenantId', { tenantId })
       .select([
         'partida.id AS id',
@@ -370,6 +395,9 @@ export class MedicionesService {
       .innerJoin(BimMedicionDocumento, 'doc', 'doc.id = med.documento_id')
       .where('doc.tenant_id = :tenantId', { tenantId })
       .andWhere('doc.presupuesto_id = :presupuestoId', { presupuestoId: documento.presupuesto_id })
+      .andWhere('doc.status IN (:...allowedStatuses)', {
+        allowedStatuses: [...MEDICION_STATUSES_FOR_ACCUMULATED],
+      })
       .select([
         'med.partida_id AS partida_id',
         'SUM(med.cantidad_actual) AS cantidad',
@@ -434,7 +462,9 @@ export class MedicionesService {
         const totalPartida = this.toNumber(partida?.cantidad ?? '0');
         row.porcentaje_avance = totalPartida > 0 ? ((acumulada / totalPartida) * 100).toFixed(2) : '0.00';
         await repo.save(row);
-        acumulados.set(String(row.partida_id), acumulada);
+        if (MEDICION_STATUSES_FOR_ACCUMULATED.includes(documento.status as (typeof MEDICION_STATUSES_FOR_ACCUMULATED)[number])) {
+          acumulados.set(String(row.partida_id), acumulada);
+        }
       }
     }
   }

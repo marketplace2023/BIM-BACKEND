@@ -9,6 +9,7 @@ import { BimReconsideracionDocumento } from '../database/entities/bim/bim-recons
 import { BimObra } from '../database/entities/bim/bim-obra.entity';
 import { BimPartida } from '../database/entities/bim/bim-partida.entity';
 import { BimPresupuesto } from '../database/entities/bim/bim-presupuesto.entity';
+import { PresupuestosModule } from '../presupuestos/presupuestos.module';
 import { ReconsideracionesController } from './reconsideraciones.controller';
 import { ReconsideracionesService } from './reconsideraciones.service';
 
@@ -25,6 +26,7 @@ import { ReconsideracionesService } from './reconsideraciones.service';
       BimPresupuesto,
     ]),
     BimAdminModule,
+    PresupuestosModule,
   ],
   controllers: [ReconsideracionesController],
   providers: [ReconsideracionesService],

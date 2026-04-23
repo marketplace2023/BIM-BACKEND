@@ -13,6 +13,11 @@ import { BimLineaCertificacion } from '../database/entities/bim/bim-linea-certif
 import { BimReconsideracion } from '../database/entities/bim/bim-reconsideracion.entity';
 import { BimReconsideracionDocumento } from '../database/entities/bim/bim-reconsideracion-documento.entity';
 import { BimRecurso } from '../database/entities/bim/bim-recurso.entity';
+import { BimPresupuestoModificadoFuente } from '../database/entities/bim/bim-presupuesto-modificado-fuente.entity';
+import { ComputosModule } from '../computos/computos.module';
+import { MemoriasModule } from '../memorias/memorias.module';
+import { PresupuestosModule } from '../presupuestos/presupuestos.module';
+import { ReconsideracionesModule } from '../reconsideraciones/reconsideraciones.module';
 import { ReportesController } from './reportes.controller';
 import { ReportesService } from './reportes.service';
 
@@ -30,9 +35,14 @@ import { ReportesService } from './reportes.service';
       BimLineaCertificacion,
       BimReconsideracion,
       BimReconsideracionDocumento,
+      BimPresupuestoModificadoFuente,
       BimRecurso,
     ]),
     BimAdminModule,
+    ComputosModule,
+    MemoriasModule,
+    PresupuestosModule,
+    ReconsideracionesModule,
   ],
   controllers: [ReportesController],
   providers: [ReportesService],

@@ -53,6 +53,14 @@ export class PresupuestosController {
     return this.presupuestosService.findByObra(obraId, req.user.tenant_id, tipo);
   }
 
+  @Get('obra/:obraId/formalizacion')
+  getFormalizacionContexto(@Param('obraId') obraId: string, @Request() req: any) {
+    return this.presupuestosService.getFormalizacionContexto(
+      obraId,
+      req.user.tenant_id,
+    );
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.presupuestosService.findOne(id, req.user.tenant_id);
@@ -61,6 +69,23 @@ export class PresupuestosController {
   @Get(':id/arbol')
   findWithTree(@Param('id') id: string, @Request() req: any) {
     return this.presupuestosService.findWithTree(id, req.user.tenant_id);
+  }
+
+  @Get(':id/modificado')
+  getPresupuestoModificado(@Param('id') id: string, @Request() req: any) {
+    return this.presupuestosService.getPresupuestoModificado(
+      id,
+      req.user.tenant_id,
+    );
+  }
+
+  @Post(':id/modificado/sync')
+  syncPresupuestoModificado(@Param('id') id: string, @Request() req: any) {
+    return this.presupuestosService.syncPresupuestoModificado(
+      id,
+      req.user.platform_user_id ?? req.user.id,
+      req.user.tenant_id,
+    );
   }
 
   @Get(':id/pdf')
