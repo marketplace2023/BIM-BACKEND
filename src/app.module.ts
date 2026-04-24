@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { getDatabaseConnectionOptions } from './database/connection-options';
 
 // ── Marketplace (reutilizados) ───────────────────────────────
 import { AuthModule } from './auth/auth.module';
@@ -33,16 +35,12 @@ import { BimAdminModule } from './bim-admin/bim-admin.module';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
-        type: 'mysql',
-        host: cfg.get<string>('DB_HOST', 'localhost'),
-        port: cfg.get<number>('DB_PORT', 3306),
-        username: cfg.get<string>('DB_USER', 'root'),
-        password: cfg.get<string>('DB_PASS', ''),
-        database: cfg.get<string>('DB_NAME', 'bim_platform'),
+        ...getDatabaseConnectionOptions(),
         charset: 'utf8mb4',
         autoLoadEntities: true,
         synchronize: false,
-        migrationsRun: false,
+        migrations: [join(__dirname, 'database', 'migrations', '*{.ts,.js}')],
+        migrationsRun: cfg.get<string>('DB_AUTO_MIGRATE', 'false') === 'true',
       }),
     }),
 
